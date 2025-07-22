@@ -81,5 +81,312 @@ editor.modal = {
     js: function(el){
       el.children[0].classList.add("modal-item-wide");
     }
+  }),
+  parameters: new MD.Modal({
+    html: `
+      <h1>Parameters</h1>
+      <div id="parameters-container">
+        <div id="parameters-list">
+          <div id="parameters-empty" style="display: none; text-align: center; color: #666; padding: 20px;">
+            No parameters defined yet. Click "Add Parameter" to create your first parameter.
+          </div>
+          <table id="parameters-table" style="width: 100%; border-collapse: collapse;">
+            <thead>
+              <tr style="background: #f5f5f5;">
+                <th style="padding: 8px; text-align: left; border-bottom: 1px solid #ddd;">Name</th>
+                <th style="padding: 8px; text-align: left; border-bottom: 1px solid #ddd;">Type</th>
+                <th style="padding: 8px; text-align: left; border-bottom: 1px solid #ddd;">Default Value</th>
+                <th style="padding: 8px; text-align: left; border-bottom: 1px solid #ddd;">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="parameters-tbody">
+            </tbody>
+          </table>
+        </div>
+        <div style="margin-top: 20px; text-align: right;">
+          <button id="parameters-cancel-btn" style="background: #666; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; margin-right: 10px;">Cancel</button>
+          <button id="add-parameter-btn" style="background: #007cba; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer;">Add Parameter</button>
+        </div>
+      </div>
+      
+      <!-- Add/Edit Parameter Form (initially hidden) -->
+      <div id="parameter-form" style="display: none;">
+        <h2 id="parameter-form-title">Add Parameter</h2>
+        <form id="parameter-form-element">
+          <div style="margin-bottom: 15px;">
+            <label for="param-name" style="display: block; margin-bottom: 5px; font-weight: bold;">Name:</label>
+            <input type="text" id="param-name" placeholder="e.g., width, height, color" 
+                   style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+            <small style="color: #666;">Must start with letter or underscore, followed by letters, numbers, or underscores</small>
+          </div>
+          
+          <div style="margin-bottom: 15px;">
+            <label for="param-type" style="display: block; margin-bottom: 5px; font-weight: bold;">Type:</label>
+            <select id="param-type" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+              <option value="number">Number</option>
+              <option value="text">Text</option>
+              <option value="color">Color</option>
+              <option value="boolean">Boolean</option>
+            </select>
+          </div>
+          
+          <div style="margin-bottom: 15px;">
+            <label for="param-default" style="display: block; margin-bottom: 5px; font-weight: bold;">Default Value:</label>
+            <input type="text" id="param-default" 
+                   style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; position: relative; z-index: 1001; pointer-events: auto;">
+          </div>
+          
+          <div style="margin-bottom: 15px;">
+            <label for="param-description" style="display: block; margin-bottom: 5px; font-weight: bold;">Description (optional):</label>
+            <textarea id="param-description" rows="3" 
+                      style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; resize: vertical;"></textarea>
+          </div>
+          
+          <div style="text-align: right;">
+            <button type="button" id="parameter-form-cancel" 
+                    style="background: #666; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; margin-right: 10px;">Cancel</button>
+            <button type="submit" id="parameter-form-save" 
+                    style="background: #007cba; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer;">Save</button>
+          </div>
+        </form>
+      </div>`,
+    js: function(el){
+      el.children[0].classList.add("modal-item-wide");
+      
+      const modal = this;
+      const parametersContainer = el.querySelector('#parameters-container');
+      const parameterForm = el.querySelector('#parameter-form');
+      const parametersTable = el.querySelector('#parameters-table');
+      const parametersEmpty = el.querySelector('#parameters-empty');
+      const parametersTBody = el.querySelector('#parameters-tbody');
+      const addParameterBtn = el.querySelector('#add-parameter-btn');
+      const parametersCancelBtn = el.querySelector('#parameters-cancel-btn');
+      const parameterFormTitle = el.querySelector('#parameter-form-title');
+      const parameterFormElement = el.querySelector('#parameter-form-element');
+      const parameterFormCancel = el.querySelector('#parameter-form-cancel');
+      
+      const paramNameInput = el.querySelector('#param-name');
+      const paramTypeSelect = el.querySelector('#param-type');
+      const paramDefaultInput = el.querySelector('#param-default');
+      const paramDescriptionInput = el.querySelector('#param-description');
+      
+      let editingParameterId = null;
+      
+      // Update default value input based on parameter type
+      function updateDefaultValueInput() {
+        const type = paramTypeSelect.value;
+        let currentElement = el.querySelector('#param-default');
+        
+                  const baseStyle = 'width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; position: relative; z-index: 1001; pointer-events: auto;';
+          
+          if (type === 'boolean') {
+            // Replace input with select for boolean
+            if (currentElement.tagName === 'INPUT') {
+              const select = document.createElement('select');
+              select.id = 'param-default';
+              select.style.cssText = baseStyle;
+              select.innerHTML = '<option value="false">False</option><option value="true">True</option>';
+              currentElement.parentNode.replaceChild(select, currentElement);
+            }
+          } else {
+            // Replace select with input for non-boolean types, or just update if already input
+            if (currentElement.tagName === 'SELECT') {
+              const input = document.createElement('input');
+              input.id = 'param-default';
+              input.style.cssText = baseStyle;
+              currentElement.parentNode.replaceChild(input, currentElement);
+              currentElement = input;
+            }
+          
+          // Set input properties based on type
+          switch (type) {
+            case 'number':
+              currentElement.type = 'number';
+              currentElement.placeholder = 'e.g., 100';
+              break;
+            case 'text':
+              currentElement.type = 'text';
+              currentElement.placeholder = 'e.g., Hello World';
+              break;
+            case 'color':
+              currentElement.type = 'color';
+              currentElement.placeholder = '';
+              break;
+            default:
+              currentElement.type = 'text';
+          }
+        }
+        
+        // Re-apply click handling after updating the input
+        ensureDefaultInputClickable();
+      }
+      
+      // Render parameters list
+      function renderParametersList() {
+        const parameters = editor.parametersManager.getParameters();
+        const paramIds = Object.keys(parameters);
+        
+        if (paramIds.length === 0) {
+          parametersTable.style.display = 'none';
+          parametersEmpty.style.display = 'block';
+        } else {
+          parametersTable.style.display = 'table';
+          parametersEmpty.style.display = 'none';
+          
+          parametersTBody.innerHTML = '';
+          paramIds.forEach(id => {
+            const param = parameters[id];
+            const row = document.createElement('tr');
+            row.style.borderBottom = '1px solid #eee';
+            
+                         row.innerHTML = 
+               '<td style="padding: 8px;">@' + param.name + '</td>' +
+                               '<td style="padding: 8px;">' + editor.parametersManager.PARAM_TYPES[param.type].label + '</td>' +
+               '<td style="padding: 8px;">' + param.defaultValue + '</td>' +
+               '<td style="padding: 8px;">' +
+                 '<button class="edit-param-btn" data-id="' + id + '" ' +
+                         'style="background: #007cba; color: white; border: none; padding: 4px 8px; border-radius: 3px; cursor: pointer; margin-right: 5px;">Edit</button>' +
+                 '<button class="delete-param-btn" data-id="' + id + '" ' +
+                         'style="background: #d63031; color: white; border: none; padding: 4px 8px; border-radius: 3px; cursor: pointer;">Delete</button>' +
+               '</td>';
+            
+            parametersTBody.appendChild(row);
+          });
+          
+          // Add event listeners for edit/delete buttons
+          el.querySelectorAll('.edit-param-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+              editParameter(this.dataset.id);
+            });
+          });
+          
+          el.querySelectorAll('.delete-param-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+              deleteParameter(this.dataset.id);
+            });
+          });
+        }
+      }
+      
+      // Store the render function on the modal object so it can be called later
+      modal.renderParametersList = renderParametersList;
+      
+      // Show parameter form
+      function showParameterForm(isEdit = false, parameterId = null) {
+        parametersContainer.style.display = 'none';
+        parameterForm.style.display = 'block';
+        parameterFormTitle.textContent = isEdit ? 'Edit Parameter' : 'Add Parameter';
+        editingParameterId = parameterId;
+        
+        if (isEdit && parameterId) {
+          const param = editor.parametersManager.getParameter(parameterId);
+          if (param) {
+            paramNameInput.value = param.name;
+            paramTypeSelect.value = param.type;
+            updateDefaultValueInput();
+            
+            // Set default value after updating input type
+            setTimeout(() => {
+              const defaultInput = el.querySelector('#param-default');
+              defaultInput.value = param.defaultValue;
+            }, 0);
+            
+            paramDescriptionInput.value = param.description || '';
+          }
+        } else {
+          parameterFormElement.reset();
+          updateDefaultValueInput();
+        }
+        
+        paramNameInput.focus();
+      }
+      
+      // Hide parameter form
+      function hideParameterForm() {
+        parametersContainer.style.display = 'block';
+        parameterForm.style.display = 'none';
+        editingParameterId = null;
+        parameterFormElement.reset();
+      }
+      
+      // Edit parameter
+      function editParameter(id) {
+        showParameterForm(true, id);
+      }
+      
+      // Delete parameter
+      function deleteParameter(id) {
+        const param = editor.parametersManager.getParameter(id);
+                 if (param && confirm("Are you sure you want to delete parameter \"@" + param.name + "\"?")) {
+          try {
+                          editor.parametersManager.deleteParameter(id);
+            renderParametersList();
+            
+            // Update property validation autocomplete
+            if (editor.propertyValidation) {
+              editor.propertyValidation.addParameterAutocomplete();
+            }
+          } catch (error) {
+            alert('Error deleting parameter: ' + error.message);
+          }
+        }
+      }
+      
+      // Event listeners
+      addParameterBtn.addEventListener('click', () => showParameterForm());
+      parametersCancelBtn.addEventListener('click', () => editor.modal.parameters.close());
+      parameterFormCancel.addEventListener('click', hideParameterForm);
+      paramTypeSelect.addEventListener('change', updateDefaultValueInput);
+      
+      // Ensure input fields are clickable
+      paramNameInput.addEventListener('mousedown', function(e) {
+        e.stopPropagation();
+        this.focus();
+      });
+      
+      // Handle dynamic default input field
+      function ensureDefaultInputClickable() {
+        const defaultInput = el.querySelector('#param-default');
+        if (defaultInput) {
+          defaultInput.addEventListener('mousedown', function(e) {
+            e.stopPropagation();
+            this.focus();
+          });
+        }
+      }
+      ensureDefaultInputClickable();
+      
+      parameterFormElement.addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        const name = paramNameInput.value.trim();
+        const type = paramTypeSelect.value;
+        const defaultValue = el.querySelector('#param-default').value;
+        const description = paramDescriptionInput.value.trim();
+        
+        if (!name) {
+          alert('Parameter name is required.');
+          return;
+        }
+        
+        try {
+          if (editingParameterId) {
+                          editor.parametersManager.updateParameter(editingParameterId, name, type, defaultValue, description);
+          } else {
+                          editor.parametersManager.addParameter(name, type, defaultValue, description);
+          }
+          
+          hideParameterForm();
+          renderParametersList();
+          
+          // Update property validation autocomplete
+          if (editor.propertyValidation) {
+            editor.propertyValidation.addParameterAutocomplete();
+          }
+        } catch (error) {
+          alert('Error saving parameter: ' + error.message);
+        }
+      });
+    }
   })
 };

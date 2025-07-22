@@ -35,7 +35,8 @@
   <link rel="stylesheet" href="css/panel.css" type="text/css"/>
   <link rel="stylesheet" href="css/align_buttons.css" type="text/css"/>
   <link rel="stylesheet" href="css/text.css" type="text/css"/>
-  <link rel="stylesheet" href="css/sponsors.css" type="text/css"/>
+<link rel="stylesheet" href="css/property-validation.css" type="text/css"/>
+<link rel="stylesheet" href="css/sponsors.css" type="text/css"/>
   <link rel="stylesheet" href="css/zoom-dropdown.css" type="text/css"/>
   <link rel="stylesheet" href="css/loading.css" type="text/css"/>
   <!-- endbuild -->
@@ -87,6 +88,7 @@
       </div>
       <div data-action="save" id="tool_save" class="menu_item">Save Image... <span class="shortcut">⌘S</span></div>
       <div data-action="export" id="tool_export" class="menu_item">Export as PNG</div>
+      <div data-action="exportJS" id="tool_export_js" class="menu_item">Save JS</div>
     </div>
   </div>
 
@@ -95,6 +97,8 @@
     <div class="menu_list inverted-undo" id="edit_menu">
       <div data-action="undo" class="menu_item" id="tool_undo">Undo <span class="shortcut">⌘Z</span></div>
       <div data-action="redo" class="menu_item" id="tool_redo">Redo <span class="shortcut">⌘Y</span></div>
+      <div class="separator"></div>
+      <div data-action="parameters" class="menu_item" id="tool_parameters">Parameters...</div>
       <div class="separator"></div>
       <div data-action="cutSelected" class="menu_item action_selected disabled" id="tool_cut">Cut <span class="shortcut">⌘X</span></div>
       <div data-action="copySelected" class="menu_item action_selected disabled" id="tool_copy">Copy <span class="shortcut">⌘C</span></div>
@@ -152,12 +156,12 @@
 
 
       <label data-title="Change canvas width" class="draginput">
-        <input id="canvas_width" type="text" pattern="[0-9]*" value="800" />
+        <input id="canvas_width" type="text" pattern="([0-9]+(\.[0-9]+)?|@[a-zA-Z_][a-zA-Z0-9_]*)" value="800" />
         <span class="icon_label">Width</span>
       </label>
 
       <label data-title="Change canvas height" class="draginput">
-        <input id="canvas_height" type="text" pattern="[0-9]*" value="600" />
+        <input id="canvas_height" type="text" pattern="([0-9]+(\.[0-9]+)?|@[a-zA-Z_][a-zA-Z0-9_]*)" value="600" />
         <span class="icon_label">Height</span>
       </label>
       
@@ -802,6 +806,8 @@
   <script type="text/javascript" src="js/lib/taphold.js"></script>
   <script type="text/javascript" src="js/lib/filesaver.js"></script>
   <script type="text/javascript" src="js/paste.js"></script>
+  <script type="text/javascript" src="js/Parameters.js"></script>
+  <script type="text/javascript" src="js/PropertyValidation.js"></script>
   <script type="text/javascript" src="js/modals.js"></script>
   <script type="text/javascript" src="js/start.js"></script>
   <!-- endbuild -->

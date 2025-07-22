@@ -350,7 +350,7 @@ MD.Panel = function(){
      
      if (!elem && !multiselected) {
        menu_items.disableContextMenuItems('#delete,#cut,#copy,#ungroup,#move_front,#move_up,#move_down,#move_back');
-       $('.menu_item', '#edit_menu').addClass('disabled');
+       $('.menu_item.action_selected', '#edit_menu').addClass('disabled');
      }
 
      $('.menu_item', '#object_menu').toggleClass('disabled', !elem && !multiselected);
@@ -370,6 +370,13 @@ MD.Panel = function(){
        
        // Enable regular menu options
        $("#cmenu_canvas").enableContextMenuItems('#delete,#cut,#copy,#move_front,#move_up,#move_down,#move_back');
+     }
+     
+     // Restore parameter references for the selected element, or clear validation if none selected
+     if (editor.propertyValidation) {
+       setTimeout(() => {
+         editor.propertyValidation.restoreParameterReferences();
+       }, 10);
      }
     }
 

@@ -196,6 +196,18 @@ MD.Editor = function(){
       elems: elems
     });
 
+    // Reset any parametrized attributes back to their parameter values after element changes
+    if (editor.propertyValidation && elems && elems.length > 0) {
+      // Use setTimeout to ensure DOM updates are complete
+      setTimeout(() => {
+        const elementsWithParams = elems.filter(elem => 
+          elem && editor.propertyValidation.hasParameterReferences(elem)
+        );
+        if (elementsWithParams.length > 0) {
+          editor.propertyValidation.resetParameterizedAttributes(elementsWithParams);
+        }
+      }, 50);
+    }
 
     if (!svgCanvas.getContext()) {
         saveCanvas();
@@ -203,6 +215,7 @@ MD.Editor = function(){
   }
 
   function changeAttribute(attr, value, completed) {
+    // Parameter resolution handled by PropertyValidation
     if (attr === "opacity") value *= 0.01;
     if (completed) {
       svgCanvas.changeSelectedAttribute(attr, value);
@@ -300,6 +313,169 @@ MD.Editor = function(){
     }});
   };
 
+  function exportJS() {
+    try {
+      console.log('Starting JavaScript export...');
+      
+      // Get the SVG content
+      const svgString = svgCanvas.getSvgString();
+      console.log('Got SVG string:', svgString.length, 'characters');
+      
+      // Create the JavaScript function
+      const jsFunction = generateParametricJS(svgString);
+      console.log('Generated JS function:', jsFunction.length, 'characters');
+      
+      // Create and download the JS file
+      const title = state.get("canvasTitle") || "parametric-svg";
+      const filename = title.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+      const blob = new Blob([jsFunction], { type: "application/javascript;charset=utf-8" });
+      
+      console.log('Downloading file:', `${filename}.js`);
+      
+      // Use the saveAs function from filesaver.js
+      if (typeof saveAs !== 'undefined') {
+        saveAs(blob, `${filename}.js`);
+      } else {
+        // Fallback download method
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `${filename}.js`;
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => {
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        }, 0);
+      }
+      
+      console.log('JavaScript export completed successfully');
+    } catch (error) {
+      console.error('Error during JavaScript export:', error);
+      alert('Error exporting JavaScript file: ' + error.message);
+    }
+  }
+
+  function generateParametricJS(svgString) {
+    // Parse the SVG to find parametric elements
+    const parser = new DOMParser();
+    const svgDoc = parser.parseFromString(svgString, 'image/svg+xml');
+    
+    // Collect all parameters and their default values
+    const parametersObj = editor.parametersManager.getParameters() || {};
+    console.log('Parameters object:', parametersObj);
+    const paramMap = {};
+    
+    // Convert parameters object to map by parameter name
+    Object.values(parametersObj).forEach(param => {
+      if (param && param.name) {
+        paramMap[param.name] = param;
+      }
+    });
+    console.log('Parameter map:', paramMap);
+    
+    // Find all elements with data-param-* attributes and replace their values
+    const parameterizedElements = svgDoc.querySelectorAll('[class*="data-param-"], [data-param-width], [data-param-height], [data-param-x], [data-param-y], [data-param-cx], [data-param-cy], [data-param-rx], [data-param-ry], [data-param-r]');
+    
+    // Actually, let's find ALL elements and check their attributes
+    const allElements = svgDoc.querySelectorAll('*');
+    allElements.forEach(elem => {
+      for (let i = 0; i < elem.attributes.length; i++) {
+        const attr = elem.attributes[i];
+        if (attr.name.startsWith('data-param-')) {
+          const attrName = attr.name.substring('data-param-'.length);
+          const paramRef = attr.value;
+          const paramName = paramRef.substring(1); // Remove the @ symbol
+          
+          if (paramMap[paramName]) {
+            // Replace the actual attribute value with template literal
+            elem.setAttribute(attrName, `\${${paramName}}`);
+          }
+        }
+      }
+    });
+    
+    // Clean up data-param-* attributes from the final output
+    allElements.forEach(elem => {
+      const attributesToRemove = [];
+      for (let i = 0; i < elem.attributes.length; i++) {
+        const attr = elem.attributes[i];
+        if (attr.name.startsWith('data-param-')) {
+          attributesToRemove.push(attr.name);
+        }
+      }
+      attributesToRemove.forEach(attrName => {
+        elem.removeAttribute(attrName);
+      });
+    });
+    
+    // Get the modified SVG string
+    const serializer = new XMLSerializer();
+    let modifiedSvgString = serializer.serializeToString(svgDoc.documentElement);
+    
+    // Generate parameter list and default values
+    const paramNames = Object.keys(paramMap);
+    const paramDefaults = paramNames.map(name => {
+      const param = paramMap[name];
+      let defaultValue = param.defaultValue;
+      
+      // Format default value based on type
+      if (param.type === 'text' || param.type === 'color') {
+        defaultValue = `"${defaultValue}"`;
+      } else if (param.type === 'boolean') {
+        defaultValue = defaultValue === 'true' || defaultValue === true ? 'true' : 'false';
+      }
+      
+      return defaultValue;
+    });
+    
+    // Escape the SVG string for template literal
+    const escapedSvg = modifiedSvgString
+      .replace(/\\/g, '\\\\')    // Escape backslashes first
+      .replace(/`/g, '\\`')      // Escape backticks
+      .replace(/\$(?!{)/g, '\\$'); // Escape $ that aren't part of ${...}
+      
+    // Generate the function
+    const hasParams = paramNames.length > 0;
+    const paramComment = hasParams 
+      ? paramNames.map(name => ` * @param {${paramMap[name].type}} ${name} - Default: ${paramMap[name].defaultValue}`).join('\n')
+      : ' * No parameters defined';
+      
+    const functionParams = hasParams ? `{${paramNames.join(', ')}} = {}` : '';
+    const defaultAssignments = hasParams 
+      ? paramNames.map((name, i) => `  const ${name}_val = ${name} !== undefined ? ${name} : ${paramDefaults[i]};`).join('\n')
+      : '';
+    const variableDeclaration = hasParams 
+      ? `  const ${paramNames.join(', ')} = ${paramNames.map(name => `${name}_val`).join(', ')};`
+      : '';
+    
+    const functionBody = `/**
+ * Parametric SVG Generator
+ * Generated by Method Draw
+ * 
+ * Parameters:
+${paramComment}
+ */
+function generateSVG(${functionParams}) {
+${defaultAssignments}
+${variableDeclaration}
+  
+  return \`${escapedSvg}\`;
+}
+
+// Export for different module systems
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = generateSVG;
+} else if (typeof define === 'function' && define.amd) {
+  define([], function() { return generateSVG; });
+} else if (typeof window !== 'undefined') {
+  window.generateSVG = generateSVG;
+}
+`;
+
+    return functionBody;
+  }
+
   function saveCanvas(){
     state.set("canvasContent", svgCanvas.getSvgString());
   }
@@ -348,6 +524,14 @@ MD.Editor = function(){
     const textarea = editor.modal.source.el.querySelector("textarea");
     textarea.value = svgCanvas.getSvgString();
     editor.modal.source.open();
+  }
+
+  function parameters(){
+    // Refresh the parameters list before opening
+    if (editor.modal.parameters.renderParametersList) {
+      editor.modal.parameters.renderParametersList();
+    }
+    editor.modal.parameters.open();
   }
 
   function loadFromUrl(url, cb){
@@ -406,6 +590,8 @@ MD.Editor = function(){
   this.shortcuts = shortcuts;
   this.donate = donate;
   this.source = source;
+  this.parameters = parameters;
+  this.exportJS = exportJS;
   this.saveCanvas = saveCanvas;
   this.loadFromUrl = loadFromUrl;
 

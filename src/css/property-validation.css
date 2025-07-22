@@ -1,0 +1,129 @@
+/* Property Input Validation Styles */
+
+/* Valid parameter reference (e.g., @width) */
+.draginput .param-reference {
+  background-color: #e7f3ff !important;
+  border-color: #007cba !important;
+  color: #005a8b !important;
+  font-weight: 500;
+  font-size: 10px !important;
+  /* Maintain proper draginput layout - preserve original padding */
+  padding: 30px 0 16px !important;
+  text-align: center !important;
+  /* Ensure text doesn't overflow into label area */
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  /* Preserve draginput positioning */
+  position: relative !important;
+  z-index: 2 !important;
+  width: 100% !important;
+  height: 24px !important;
+}
+
+/* Make labels visible on parameter reference fields - use class-based approach */
+.draginput.has-parameter span,
+.draginput.has-parameter span.icon_label,
+.draginput .param-reference + span,
+.draginput .param-reference + span.icon_label,
+.draginput .param-reference ~ span,
+.draginput .param-reference ~ span.icon_label {
+  color: #333 !important;
+  font-weight: 600 !important;
+  /* Ensure label stays in correct position */
+  position: absolute !important;
+  top: 5px !important;
+  left: 5px !important;
+  z-index: 10 !important;
+  white-space: nowrap !important;
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  font-size: 12px !important;
+  background: none !important;
+  border: none !important;
+  pointer-events: none !important;
+}
+
+/* Valid value (number or valid parameter reference) */
+.draginput .param-valid {
+  border-color: #28a745 !important;
+}
+
+/* Invalid value */
+.draginput .param-invalid {
+  background-color: #fff5f5 !important;
+  border-color: #dc3545 !important;
+  color: #dc3545 !important;
+  font-size: 11px !important;
+  /* Maintain proper draginput layout */
+  padding: 30px 0 16px !important;
+  text-align: center !important;
+  position: relative !important;
+  z-index: 2 !important;
+  width: 100% !important;
+  height: 24px !important;
+}
+
+/* Make labels visible on invalid fields too */
+.draginput .param-invalid + span,
+.draginput .param-invalid + span.icon_label,
+.draginput .param-invalid ~ span,
+.draginput .param-invalid ~ span.icon_label {
+  color: #333 !important;
+  font-weight: 600 !important;
+  /* Ensure label stays in correct position */
+  position: absolute !important;
+  top: 5px !important;
+  left: 5px !important;
+  z-index: 10 !important;
+  white-space: nowrap !important;
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  font-size: 12px !important;
+  background: none !important;
+  border: none !important;
+  pointer-events: none !important;
+}
+
+/* Parameter autocomplete suggestions */
+datalist option {
+  background: #f8f9fa;
+  color: #007cba;
+  font-family: monospace;
+}
+
+/* Focus states for parameter inputs */
+input.param-reference:focus {
+  box-shadow: 0 0 0 2px rgba(0, 124, 186, 0.25);
+}
+
+input.param-invalid:focus {
+  box-shadow: 0 0 0 2px rgba(220, 53, 69, 0.25);
+}
+
+/* Placeholder styling for parameter hints */
+input[data-attr]::placeholder {
+  color: #666;
+  font-style: italic;
+}
+
+/* Tooltip for invalid parameter references */
+input.param-invalid {
+  position: relative;
+}
+
+input.param-invalid:hover::after {
+  content: "Invalid parameter reference or number format";
+  position: absolute;
+  top: 100%;
+  left: 0;
+  background: #dc3545;
+  color: white;
+  padding: 4px 8px;
+  border-radius: 3px;
+  font-size: 12px;
+  white-space: nowrap;
+  z-index: 1000;
+  margin-top: 2px;
+} 

@@ -3099,6 +3099,8 @@ var getMouseTarget = this.getMouseTarget = function(evt) {
                 selectorManager.requestSelector(selectedElements[i]).resize();
               }
             }
+            
+
 
           }
           // no change in position/size, so maybe we should move to pathedit
