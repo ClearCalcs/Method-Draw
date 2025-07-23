@@ -1,4 +1,4 @@
-window.methodDraw = function() {
+window.methodDraw = (function($) {
   var Editor = {};
   var is_ready = false;
   var curConfig = {
@@ -2070,7 +2070,6 @@ window.methodDraw = function() {
         
       }
     };
-  };
   
   var callbacks = [];
   
@@ -2151,7 +2150,7 @@ window.methodDraw = function() {
   };
 
   return Editor;
-}(jQuery);
+})(jQuery);
 
 // Run init once DOM is loaded
 $(methodDraw.init);
