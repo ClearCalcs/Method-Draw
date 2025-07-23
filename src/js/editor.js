@@ -445,7 +445,7 @@ MD.Editor = function(){
         cloneHelperFunctions.push(helperFunction);
         
         // Replace the clone group with a placeholder that calls the helper function
-        const placeholder = svgDoc.createElement('g');
+        const placeholder = svgDoc.createElementNS('http://www.w3.org/2000/svg', 'g');
         placeholder.setAttribute('id', cloneGroup.id);
         placeholder.innerHTML = `\${${funcName}()}`;
         cloneGroup.parentNode.replaceChild(placeholder, cloneGroup);
@@ -538,13 +538,39 @@ MD.Editor = function(){
       ? [inputParamComment, equationParamComment].filter(c => c).join('\n')
       : ' * No parameters defined';
       
-    const functionParams = hasInputParams ? `{${inputParams.join(', ')}} = {}` : '';
-    const defaultAssignments = hasInputParams 
-      ? inputParams.map((name, i) => `  const ${name}_val = ${name} !== undefined ? ${name} : ${paramDefaults[i]};`).join('\n')
+    const functionParams = 'params = {}';
+    const parameterAssignments = hasInputParams 
+      ? inputParams.map((name, i) => `  const ${name} = params.${name} ?? ${paramDefaults[i]};`).join('\n')
       : '';
-    const variableDeclaration = hasInputParams 
-      ? inputParams.map(name => `  const ${name} = ${name}_val;`).join('\n')
+    
+    // Generate parameter types array for export
+    const typeMapping = {
+      'number': 'Number',
+      'text': 'String',
+      'color': 'String',
+      'boolean': 'Boolean',
+      'equation': 'Number',
+      'grid_cols': 'Number',
+      'grid_rows': 'Number',
+      'grid_spacing_x': 'Number',
+      'grid_spacing_y': 'Number'
+    };
+    
+    const paramsTypesArray = hasInputParams 
+      ? inputParams.map(name => {
+          const param = paramMap[name];
+          const jsType = typeMapping[param.type] || 'String';
+          return `  { key: "${name}", type: "${jsType}" }`;
+        }).join(',\n')
       : '';
+    
+    const paramsTypesExport = hasInputParams 
+      ? `function params() {
+  return [\n${paramsTypesArray}\n];
+}`
+      : `function params() {
+  return [];
+}`;
     
     const functionBody = `/**
  * Parametric SVG Generator
@@ -553,22 +579,24 @@ MD.Editor = function(){
  * Parameters:
 ${paramComment}
  */
-function generateSVG(${functionParams}) {
-${defaultAssignments}
-${variableDeclaration}
+function render(${functionParams}) {
+${parameterAssignments}
 ${equationCalculations ? '\n' + equationCalculations : ''}
 ${cloneHelperFunctions.join('')}
   
   return \`${escapedSvg}\`;
 }
 
+${paramsTypesExport}
+
 // Export for different module systems
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = generateSVG;
+  module.exports = render, params;
 } else if (typeof define === 'function' && define.amd) {
-  define([], function() { return generateSVG; });
+  define([], function() { return render, params; });
 } else if (typeof window !== 'undefined') {
-  window.generateSVG = generateSVG;
+  window.render = render;
+  window.params = params;
 }
 `;
 
