@@ -10,7 +10,11 @@ MD.Parameters = function(){
     number: { label: 'Number', defaultValue: 0 },
     text: { label: 'Text', defaultValue: '' },
     color: { label: 'Color', defaultValue: '#000000' },
-    boolean: { label: 'Boolean', defaultValue: false }
+    boolean: { label: 'Boolean', defaultValue: false },
+    grid_cols: { label: 'Grid Columns', defaultValue: 3 },
+    grid_rows: { label: 'Grid Rows', defaultValue: 2 },
+    grid_spacing_x: { label: 'Horizontal Spacing', defaultValue: 50 },
+    grid_spacing_y: { label: 'Vertical Spacing', defaultValue: 50 }
   };
 
   // Get current parameters from state

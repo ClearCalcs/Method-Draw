@@ -395,12 +395,75 @@ MD.Editor = function(){
       }
     });
     
-    // Clean up data-param-* attributes from the final output
+    // Handle parametric clone groups
+    const cloneGroups = svgDoc.querySelectorAll('[data-parametric-clone="true"]');
+    const cloneHelperFunctions = [];
+    
+    cloneGroups.forEach((cloneGroup, index) => {
+      const colsParam = cloneGroup.getAttribute('data-cols-param');
+      const rowsParam = cloneGroup.getAttribute('data-rows-param');
+      const spacingXParam = cloneGroup.getAttribute('data-spacing-x-param');
+      const spacingYParam = cloneGroup.getAttribute('data-spacing-y-param');
+      
+      // Find template group
+      const templateGroup = cloneGroup.querySelector('[data-template="true"]');
+      if (templateGroup) {
+        // Get template elements as string
+        const templateElements = Array.from(templateGroup.children).map(child => {
+          return new XMLSerializer().serializeToString(child);
+        }).join('');
+        
+        // Generate helper function name
+        const funcName = `generateCloneGrid_${index}`;
+        
+        // Create helper function
+        const helperFunction = `
+  function ${funcName}() {
+    const cols = ${colsParam};
+    const rows = ${rowsParam};
+    const spacingX = ${spacingXParam};
+    const spacingY = ${spacingYParam};
+    
+    let elements = '';
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        const offsetX = col * spacingX;
+        const offsetY = row * spacingY;
+        
+        if (offsetX === 0 && offsetY === 0) {
+          // Original position - just add template elements
+          elements += \`${templateElements.replace(/`/g, '\\`')}\`;
+        } else {
+          // Clone position - wrap in transform group
+          elements += \`<g transform="translate(\${offsetX},\${offsetY})">${templateElements.replace(/`/g, '\\`')}</g>\`;
+        }
+      }
+    }
+    return elements;
+  }`;
+        
+        cloneHelperFunctions.push(helperFunction);
+        
+        // Replace the clone group with a placeholder that calls the helper function
+        const placeholder = svgDoc.createElement('g');
+        placeholder.setAttribute('id', cloneGroup.id);
+        placeholder.innerHTML = `\${${funcName}()}`;
+        cloneGroup.parentNode.replaceChild(placeholder, cloneGroup);
+      }
+    });
+
+    // Clean up data-param-* attributes and parametric clone attributes from the final output
     allElements.forEach(elem => {
       const attributesToRemove = [];
       for (let i = 0; i < elem.attributes.length; i++) {
         const attr = elem.attributes[i];
-        if (attr.name.startsWith('data-param-')) {
+        if (attr.name.startsWith('data-param-') || 
+            attr.name.startsWith('data-parametric-') ||
+            attr.name.startsWith('data-cols-') ||
+            attr.name.startsWith('data-rows-') ||
+            attr.name.startsWith('data-spacing-') ||
+            attr.name === 'data-template' ||
+            attr.name === 'data-clone-instance') {
           attributesToRemove.push(attr.name);
         }
       }
@@ -446,7 +509,7 @@ MD.Editor = function(){
       ? paramNames.map((name, i) => `  const ${name}_val = ${name} !== undefined ? ${name} : ${paramDefaults[i]};`).join('\n')
       : '';
     const variableDeclaration = hasParams 
-      ? `  const ${paramNames.join(', ')} = ${paramNames.map(name => `${name}_val`).join(', ')};`
+      ? paramNames.map(name => `  const ${name} = ${name}_val;`).join('\n')
       : '';
     
     const functionBody = `/**
@@ -459,6 +522,7 @@ ${paramComment}
 function generateSVG(${functionParams}) {
 ${defaultAssignments}
 ${variableDeclaration}
+${cloneHelperFunctions.join('')}
   
   return \`${escapedSvg}\`;
 }
@@ -502,6 +566,103 @@ if (typeof module !== 'undefined' && module.exports) {
       saveCanvas();
     }
   }
+
+  function createParametricClone(cols, rows, spacingX, spacingY) {
+    // Check if we have selected elements
+    const selectedElements = svgCanvas.getSelectedElems();
+    if (!selectedElements || selectedElements.length === 0 || !selectedElements[0]) {
+      alert('Please select one or more elements to create a parametric clone.');
+      return;
+    }
+
+    // Generate unique parameter names based on timestamp
+    const timestamp = Date.now();
+    const colsParamName = `clone_cols_${timestamp}`;
+    const rowsParamName = `clone_rows_${timestamp}`;
+    const spacingXParamName = `clone_spacing_x_${timestamp}`;
+    const spacingYParamName = `clone_spacing_y_${timestamp}`;
+
+    try {
+      // Add the grid parameters to the parameter system
+      editor.parametersManager.addParameter(colsParamName, 'grid_cols', cols, 'Number of columns in the grid');
+      editor.parametersManager.addParameter(rowsParamName, 'grid_rows', rows, 'Number of rows in the grid');
+      editor.parametersManager.addParameter(spacingXParamName, 'grid_spacing_x', spacingX, 'Horizontal spacing between elements');
+      editor.parametersManager.addParameter(spacingYParamName, 'grid_spacing_y', spacingY, 'Vertical spacing between elements');
+
+      // Create the parametric clone group using SVG canvas
+      const cloneGroupId = svgCanvas.createParametricCloneGroup(
+        selectedElements,
+        colsParamName,
+        rowsParamName,
+        spacingXParamName,
+        spacingYParamName
+      );
+
+      if (cloneGroupId) {
+        // Select the new group
+        const cloneGroup = svgedit.utilities.getElem(cloneGroupId);
+        if (cloneGroup) {
+          svgCanvas.clearSelection();
+          svgCanvas.addToSelection([cloneGroup]);
+        }
+        
+        saveCanvas();
+        alert(`Parametric clone created with ${cols}×${rows} grid pattern.`);
+      }
+         } catch (error) {
+       alert('Error creating parametric clone: ' + error.message);
+     }
+   }
+
+   function editParametricClone(cloneGroup) {
+     if (!cloneGroup || cloneGroup.getAttribute('data-parametric-clone') !== 'true') {
+       alert('Selected element is not a parametric clone.');
+       return;
+     }
+
+     // Get parameter names from the clone group
+     const colsParam = cloneGroup.getAttribute('data-cols-param');
+     const rowsParam = cloneGroup.getAttribute('data-rows-param');
+     const spacingXParam = cloneGroup.getAttribute('data-spacing-x-param');
+     const spacingYParam = cloneGroup.getAttribute('data-spacing-y-param');
+
+     if (!colsParam || !rowsParam || !spacingXParam || !spacingYParam) {
+       alert('Parametric clone data is corrupted.');
+       return;
+     }
+
+     // Get current parameter values
+     const colsParamObj = editor.parametersManager.getParameterByName(colsParam);
+     const rowsParamObj = editor.parametersManager.getParameterByName(rowsParam);
+     const spacingXParamObj = editor.parametersManager.getParameterByName(spacingXParam);
+     const spacingYParamObj = editor.parametersManager.getParameterByName(spacingYParam);
+
+     if (!colsParamObj || !rowsParamObj || !spacingXParamObj || !spacingYParamObj) {
+       alert('Could not find associated parameters for this parametric clone.');
+       return;
+     }
+
+     // Set up the modal with current values
+     const modal = editor.modal.parametricClone;
+     modal.open();
+     
+     // Pre-populate the form with current values
+     setTimeout(() => {
+       const modalEl = modal.el;
+       modalEl.querySelector('#clone-cols').value = colsParamObj.defaultValue;
+       modalEl.querySelector('#clone-rows').value = rowsParamObj.defaultValue;
+       modalEl.querySelector('#clone-spacing-x').value = spacingXParamObj.defaultValue;
+       modalEl.querySelector('#clone-spacing-y').value = spacingYParamObj.defaultValue;
+       
+       // Store the parameter names for updating
+       modalEl.setAttribute('data-editing-clone', 'true');
+       modalEl.setAttribute('data-cols-param', colsParam);
+       modalEl.setAttribute('data-rows-param', rowsParam);
+       modalEl.setAttribute('data-spacing-x-param', spacingXParam);
+       modalEl.setAttribute('data-spacing-y-param', spacingYParam);
+       modalEl.setAttribute('data-clone-group-id', cloneGroup.id);
+     }, 50);
+   }
 
   function about(){
     editor.modal.about.open();
@@ -559,6 +720,8 @@ if (typeof module !== 'undefined' && module.exports) {
   this.changeAttribute = changeAttribute;
   this.contextChanged = contextChanged;
   this.elementTransition = elementTransition;
+  this.createParametricClone = createParametricClone;
+  this.editParametricClone = editParametricClone;
   this.switchPaint = switchPaint;
   this.focusPaint = focusPaint;
   this.save = save;

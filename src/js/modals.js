@@ -234,23 +234,97 @@ editor.modal = {
           parametersEmpty.style.display = 'none';
           
           parametersTBody.innerHTML = '';
+          
+          // Group parameters by parametric clone groups
+          const cloneGroups = {};
+          const regularParams = [];
+          
           paramIds.forEach(id => {
             const param = parameters[id];
+            // Check if this is a parametric clone parameter by looking for the timestamp pattern
+            const timestampMatch = param.name.match(/^clone_(cols|rows|spacing_x|spacing_y)_(\d+)$/);
+            if (timestampMatch) {
+              const timestamp = timestampMatch[2];
+              if (!cloneGroups[timestamp]) {
+                cloneGroups[timestamp] = {
+                  cols: null,
+                  rows: null,
+                  spacing_x: null,
+                  spacing_y: null
+                };
+              }
+              cloneGroups[timestamp][timestampMatch[1]] = { id, param };
+            } else {
+              regularParams.push({ id, param });
+            }
+          });
+          
+          // Render regular parameters first
+          regularParams.forEach(({ id, param }) => {
             const row = document.createElement('tr');
             row.style.borderBottom = '1px solid #eee';
             
-                         row.innerHTML = 
-               '<td style="padding: 8px;">@' + param.name + '</td>' +
-                               '<td style="padding: 8px;">' + editor.parametersManager.PARAM_TYPES[param.type].label + '</td>' +
-               '<td style="padding: 8px;">' + param.defaultValue + '</td>' +
-               '<td style="padding: 8px;">' +
-                 '<button class="edit-param-btn" data-id="' + id + '" ' +
-                         'style="background: #007cba; color: white; border: none; padding: 4px 8px; border-radius: 3px; cursor: pointer; margin-right: 5px;">Edit</button>' +
-                 '<button class="delete-param-btn" data-id="' + id + '" ' +
-                         'style="background: #d63031; color: white; border: none; padding: 4px 8px; border-radius: 3px; cursor: pointer;">Delete</button>' +
-               '</td>';
+            row.innerHTML = 
+              '<td style="padding: 8px;">@' + param.name + '</td>' +
+              '<td style="padding: 8px;">' + editor.parametersManager.PARAM_TYPES[param.type].label + '</td>' +
+              '<td style="padding: 8px;">' + param.defaultValue + '</td>' +
+              '<td style="padding: 8px;">' +
+                '<button class="edit-param-btn" data-id="' + id + '" ' +
+                        'style="background: #007cba; color: white; border: none; padding: 4px 8px; border-radius: 3px; cursor: pointer; margin-right: 5px;">Edit</button>' +
+                '<button class="delete-param-btn" data-id="' + id + '" ' +
+                        'style="background: #d63031; color: white; border: none; padding: 4px 8px; border-radius: 3px; cursor: pointer;">Delete</button>' +
+              '</td>';
             
             parametersTBody.appendChild(row);
+          });
+          
+          // Add separator if we have both regular params and clone groups
+          if (regularParams.length > 0 && Object.keys(cloneGroups).length > 0) {
+            const separatorRow = document.createElement('tr');
+            separatorRow.innerHTML = '<td colspan="4" style="padding: 12px 8px; background: #f8f8f8; font-weight: bold; color: #666;">Parametric Clone Groups</td>';
+            parametersTBody.appendChild(separatorRow);
+          }
+          
+          // Render parametric clone groups
+          Object.keys(cloneGroups).forEach(timestamp => {
+            const group = cloneGroups[timestamp];
+            
+            // Create group header
+            const headerRow = document.createElement('tr');
+            headerRow.style.background = '#f5f5f5';
+            headerRow.innerHTML = '<td colspan="4" style="padding: 8px; font-weight: bold;">Clone Group ' + timestamp + '</td>';
+            parametersTBody.appendChild(headerRow);
+            
+            // Render group parameters in order: cols, rows, spacing_x, spacing_y
+            ['cols', 'rows', 'spacing_x', 'spacing_y'].forEach(type => {
+              if (group[type]) {
+                const { id, param } = group[type];
+                const row = document.createElement('tr');
+                row.style.borderBottom = '1px solid #eee';
+                row.style.paddingLeft = '16px';
+                
+                // Friendly names for grid parameters
+                const friendlyNames = {
+                  cols: 'Columns',
+                  rows: 'Rows', 
+                  spacing_x: 'Horizontal Spacing',
+                  spacing_y: 'Vertical Spacing'
+                };
+                
+                row.innerHTML = 
+                  '<td style="padding: 8px; padding-left: 16px; color: #666;">└ ' + friendlyNames[type] + '</td>' +
+                  '<td style="padding: 8px;">' + editor.parametersManager.PARAM_TYPES[param.type].label + '</td>' +
+                  '<td style="padding: 8px;">' + param.defaultValue + '</td>' +
+                  '<td style="padding: 8px;">' +
+                    '<button class="edit-param-btn" data-id="' + id + '" ' +
+                            'style="background: #007cba; color: white; border: none; padding: 4px 8px; border-radius: 3px; cursor: pointer; margin-right: 5px;">Edit</button>' +
+                    '<button class="delete-param-btn" data-id="' + id + '" ' +
+                            'style="background: #d63031; color: white; border: none; padding: 4px 8px; border-radius: 3px; cursor: pointer;">Delete</button>' +
+                  '</td>';
+                
+                parametersTBody.appendChild(row);
+              }
+            });
           });
           
           // Add event listeners for edit/delete buttons
@@ -386,6 +460,144 @@ editor.modal = {
         } catch (error) {
           alert('Error saving parameter: ' + error.message);
         }
+      });
+    }
+  }),
+  
+  parametricClone: new MD.Modal({
+    html: `
+      <h1>Define Parametric Clone</h1>
+      <p style="margin-bottom: 20px; color: #666;">
+        Create a parametric grid of cloned elements with configurable spacing and dimensions.
+      </p>
+      
+      <div id="parametric-clone-form">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
+          <div>
+            <label for="clone-cols" style="display: block; margin-bottom: 5px; font-weight: bold;">Columns:</label>
+            <input type="number" id="clone-cols" value="3" min="1" max="20" 
+                   style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+          </div>
+          
+          <div>
+            <label for="clone-rows" style="display: block; margin-bottom: 5px; font-weight: bold;">Rows:</label>
+            <input type="number" id="clone-rows" value="2" min="1" max="20"
+                   style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+          </div>
+          
+          <div>
+            <label for="clone-spacing-x" style="display: block; margin-bottom: 5px; font-weight: bold;">Horizontal Spacing:</label>
+            <input type="number" id="clone-spacing-x" value="50" min="0" max="1000"
+                   style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+          </div>
+          
+          <div>
+            <label for="clone-spacing-y" style="display: block; margin-bottom: 5px; font-weight: bold;">Vertical Spacing:</label>
+            <input type="number" id="clone-spacing-y" value="50" min="0" max="1000"
+                   style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+          </div>
+        </div>
+        
+        <div style="text-align: right; margin-top: 30px;">
+          <button id="parametric-clone-cancel" style="background: #666; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; margin-right: 10px;">Cancel</button>
+          <button id="parametric-clone-create" style="background: #007cba; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer;">Create Clone</button>
+        </div>
+      </div>
+    `,
+    
+    js: function(el) {
+      // Handle cancel button
+      el.querySelector('#parametric-clone-cancel').addEventListener('click', function() {
+        editor.modal.parametricClone.close();
+      });
+      
+      // Handle create button
+      el.querySelector('#parametric-clone-create').addEventListener('click', function() {
+        const cols = parseInt(el.querySelector('#clone-cols').value) || 3;
+        const rows = parseInt(el.querySelector('#clone-rows').value) || 2;
+        const spacingX = parseInt(el.querySelector('#clone-spacing-x').value) || 50;
+        const spacingY = parseInt(el.querySelector('#clone-spacing-y').value) || 50;
+        
+        const isEditing = el.getAttribute('data-editing-clone') === 'true';
+        
+        if (isEditing) {
+          // Update existing parametric clone
+          const colsParam = el.getAttribute('data-cols-param');
+          const rowsParam = el.getAttribute('data-rows-param');
+          const spacingXParam = el.getAttribute('data-spacing-x-param');
+          const spacingYParam = el.getAttribute('data-spacing-y-param');
+          const cloneGroupId = el.getAttribute('data-clone-group-id');
+          
+          try {
+            // Update parameter values
+            const parametersManager = editor.parametersManager;
+            const colsParamObj = parametersManager.getParameterByName(colsParam);
+            const rowsParamObj = parametersManager.getParameterByName(rowsParam);
+            const spacingXParamObj = parametersManager.getParameterByName(spacingXParam);
+            const spacingYParamObj = parametersManager.getParameterByName(spacingYParam);
+            
+            if (colsParamObj && rowsParamObj && spacingXParamObj && spacingYParamObj) {
+              // Get parameter IDs from the parameters object
+              const parameters = parametersManager.getParameters();
+              let colsId, rowsId, spacingXId, spacingYId;
+              
+              Object.keys(parameters).forEach(id => {
+                const param = parameters[id];
+                if (param.name === colsParam) colsId = id;
+                if (param.name === rowsParam) rowsId = id;
+                if (param.name === spacingXParam) spacingXId = id;
+                if (param.name === spacingYParam) spacingYId = id;
+              });
+              
+              if (colsId) parametersManager.updateParameter(colsId, colsParam, 'grid_cols', cols, colsParamObj.description);
+              if (rowsId) parametersManager.updateParameter(rowsId, rowsParam, 'grid_rows', rows, rowsParamObj.description);
+              if (spacingXId) parametersManager.updateParameter(spacingXId, spacingXParam, 'grid_spacing_x', spacingX, spacingXParamObj.description);
+              if (spacingYId) parametersManager.updateParameter(spacingYId, spacingYParam, 'grid_spacing_y', spacingY, spacingYParamObj.description);
+              
+              // Regenerate the clone group
+              if (typeof svgCanvas.updateParametricCloneGroup === 'function') {
+                svgCanvas.updateParametricCloneGroup(cloneGroupId);
+              }
+              
+              alert('Parametric clone updated successfully.');
+            }
+          } catch (error) {
+            alert('Error updating parametric clone: ' + error.message);
+          }
+          
+          // Clear editing state
+          el.removeAttribute('data-editing-clone');
+          el.removeAttribute('data-cols-param');
+          el.removeAttribute('data-rows-param');
+          el.removeAttribute('data-spacing-x-param');
+          el.removeAttribute('data-spacing-y-param');
+          el.removeAttribute('data-clone-group-id');
+        } else {
+          // Create new parametric clone
+          if (typeof editor.createParametricClone === 'function') {
+            editor.createParametricClone(cols, rows, spacingX, spacingY);
+          }
+        }
+        
+        editor.modal.parametricClone.close();
+      });
+      
+      // Ensure input fields are clickable (fix for modal z-index issues)
+      el.querySelector('#clone-cols').addEventListener('mousedown', function(e) {
+        e.stopPropagation();
+        this.focus();
+      });
+      el.querySelector('#clone-rows').addEventListener('mousedown', function(e) {
+        e.stopPropagation();
+        this.focus();
+      });
+      el.querySelector('#clone-spacing-x').addEventListener('mousedown', function(e) {
+        e.stopPropagation();
+        this.focus();
+      });
+      el.querySelector('#clone-spacing-y').addEventListener('mousedown', function(e) {
+        e.stopPropagation();
+        this.focus();
       });
     }
   })

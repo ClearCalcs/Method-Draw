@@ -1722,60 +1722,7 @@ window.methodDraw = (function($) {
       // Set default zoom 
     $('#zoom').val(svgCanvas.getZoom() * 100);
     
-    $("#workarea").contextMenu({
-        menu: 'cmenu_canvas',
-        inSpeed: 0
-      },
-      function(action, el, pos) {
-        switch ( action ) {
-          case 'delete':
-            deleteSelected();
-            break;
-          case 'cut':
-            cutSelected();
-            break;
-          case 'copy':
-            copySelected();
-            break;
-          case 'paste':
-            svgCanvas.pasteElements();
-            break;
-          case 'paste_in_place':
-            svgCanvas.pasteElements('in_place');
-            break;
-          case 'group':
-            svgCanvas.groupSelectedElements();
-            break;
-          case 'ungroup':         
-            svgCanvas.ungroupSelectedElement();  
-            break;
-          case 'move_front':
-            moveToTopSelected();
-            break;
-          case 'move_up':
-            moveUpDownSelected('Up');
-            break;
-          case 'move_down':
-            moveUpDownSelected('Down');
-            break;
-          case 'move_back':
-            moveToBottomSelected();
-            break;
-            default:
-            if(svgedit.contextmenu && svgedit.contextmenu.hasCustomHandler(action)){
-              svgedit.contextmenu.getCustomHandler(action).call();
-              }
-              break;
-        }
-        
-    });
-    
-    $('.contextMenu li').mousedown(function(ev) {
-      ev.preventDefault();
-    })
-    
-    $('#cmenu_canvas li').disableContextMenu();
-    canv_menu.enableContextMenuItems('#delete,#cut,#copy');
+
     
     Editor.openPrep = function(func) {
       $('#main_menu').hide();

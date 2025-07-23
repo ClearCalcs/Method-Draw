@@ -8124,6 +8124,213 @@ this.groupSelectedElements = function(type) {
   selectOnly([g], true);
 };
 
+// Function: createParametricCloneGroup  
+// Creates a parametric clone group with grid layout
+this.createParametricCloneGroup = function(templateElements, colsParamName, rowsParamName, spacingXParamName, spacingYParamName) {
+  if (!templateElements || templateElements.length === 0) {
+    return null;
+  }
+
+  // Get the parameter values
+  const cols = editor.parametersManager.resolveParameterValue('@' + colsParamName);
+  const rows = editor.parametersManager.resolveParameterValue('@' + rowsParamName);
+  const spacingX = editor.parametersManager.resolveParameterValue('@' + spacingXParamName);
+  const spacingY = editor.parametersManager.resolveParameterValue('@' + spacingYParamName);
+
+  const batchCmd = new BatchCommand("Create Parametric Clone");
+  
+  // Create the main parametric clone group
+  const cloneGroupId = getNextId();
+  const cloneGroup = addSvgElementFromJson({
+    "element": "g",
+    "attr": {
+      "id": cloneGroupId,
+      "data-parametric-clone": "true",
+      "data-cols-param": colsParamName,
+      "data-rows-param": rowsParamName,
+      "data-spacing-x-param": spacingXParamName,
+      "data-spacing-y-param": spacingYParamName
+    }
+  });
+
+  // Create template group to hold the original elements
+  const templateGroupId = getNextId();
+  const templateGroup = addSvgElementFromJson({
+    "element": "g",
+    "attr": {
+      "id": templateGroupId,
+      "data-template": "true"
+    }
+  });
+  
+  cloneGroup.appendChild(templateGroup);
+
+  // Move template elements to template group and get their bounding box
+  let templateBBox = null;
+  templateElements.forEach(elem => {
+    if (elem) {
+      const oldParent = elem.parentNode;
+      const oldNextSibling = elem.nextSibling;
+      templateGroup.appendChild(elem);
+      batchCmd.addSubCommand(new MoveElementCommand(elem, oldNextSibling, oldParent));
+      
+      // Calculate bounding box of template elements
+      try {
+        const elemBBox = getStrokedBBox([elem]);
+        if (elemBBox) {
+          if (!templateBBox) {
+            templateBBox = {
+              x: elemBBox.x,
+              y: elemBBox.y,
+              width: elemBBox.width,
+              height: elemBBox.height
+            };
+          } else {
+            const x2 = Math.max(templateBBox.x + templateBBox.width, elemBBox.x + elemBBox.width);
+            const y2 = Math.max(templateBBox.y + templateBBox.height, elemBBox.y + elemBBox.height);
+            templateBBox.x = Math.min(templateBBox.x, elemBBox.x);
+            templateBBox.y = Math.min(templateBBox.y, elemBBox.y);
+            templateBBox.width = x2 - templateBBox.x;
+            templateBBox.height = y2 - templateBBox.y;
+          }
+        }
+      } catch (e) {
+        console.warn('Could not get bounding box for element:', elem);
+      }
+    }
+  });
+
+  // If we couldn't get a bounding box, use a default offset
+  if (!templateBBox) {
+    templateBBox = { x: 0, y: 0, width: 50, height: 50 };
+  }
+
+  // Generate grid of clones
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      // Skip the first position (0,0) since that's where the template is
+      if (row === 0 && col === 0) continue;
+      
+      const cloneInstanceGroup = addSvgElementFromJson({
+        "element": "g",
+        "attr": {
+          "id": getNextId(),
+          "data-clone-instance": "true",
+          "data-row": row,
+          "data-col": col
+        }
+      });
+      
+      // Calculate position offset
+      const offsetX = col * spacingX;
+      const offsetY = row * spacingY;
+      
+      // Set transform for positioning
+      if (offsetX !== 0 || offsetY !== 0) {
+        cloneInstanceGroup.setAttribute("transform", `translate(${offsetX},${offsetY})`);
+      }
+      
+      // Clone all template elements
+      templateElements.forEach(elem => {
+        if (elem) {
+          const clone = copyElem(elem);
+          cloneInstanceGroup.appendChild(clone);
+        }
+      });
+      
+      cloneGroup.appendChild(cloneInstanceGroup);
+    }
+  }
+
+  batchCmd.addSubCommand(new InsertElementCommand(cloneGroup));
+  addCommandToHistory(batchCmd);
+  
+  call("changed", [cloneGroup]);
+  return cloneGroupId;
+};
+
+// Function: updateParametricCloneGroup
+// Updates an existing parametric clone group with new parameter values
+this.updateParametricCloneGroup = function(cloneGroupId) {
+  const cloneGroup = getElem(cloneGroupId);
+  if (!cloneGroup || cloneGroup.getAttribute('data-parametric-clone') !== 'true') {
+    return false;
+  }
+
+  // Get parameter names
+  const colsParamName = cloneGroup.getAttribute('data-cols-param');
+  const rowsParamName = cloneGroup.getAttribute('data-rows-param');
+  const spacingXParamName = cloneGroup.getAttribute('data-spacing-x-param');
+  const spacingYParamName = cloneGroup.getAttribute('data-spacing-y-param');
+
+  // Get updated parameter values
+  const cols = editor.parametersManager.resolveParameterValue('@' + colsParamName);
+  const rows = editor.parametersManager.resolveParameterValue('@' + rowsParamName);
+  const spacingX = editor.parametersManager.resolveParameterValue('@' + spacingXParamName);
+  const spacingY = editor.parametersManager.resolveParameterValue('@' + spacingYParamName);
+
+  const batchCmd = new BatchCommand("Update Parametric Clone");
+
+  // Find template group
+  const templateGroup = cloneGroup.querySelector('[data-template="true"]');
+  if (!templateGroup) {
+    console.error('Template group not found in parametric clone');
+    return false;
+  }
+
+  // Get template elements
+  const templateElements = Array.from(templateGroup.children);
+
+  // Remove all existing clone instances
+  const cloneInstances = cloneGroup.querySelectorAll('[data-clone-instance="true"]');
+  cloneInstances.forEach(instance => {
+    batchCmd.addSubCommand(new RemoveElementCommand(instance, instance.nextSibling, instance.parentNode));
+    instance.parentNode.removeChild(instance);
+  });
+
+  // Generate new grid of clones
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      // Skip the first position (0,0) since that's where the template is
+      if (row === 0 && col === 0) continue;
+      
+      const cloneInstanceGroup = addSvgElementFromJson({
+        "element": "g",
+        "attr": {
+          "id": getNextId(),
+          "data-clone-instance": "true",
+          "data-row": row,
+          "data-col": col
+        }
+      });
+      
+      // Calculate position offset
+      const offsetX = col * spacingX;
+      const offsetY = row * spacingY;
+      
+      // Set transform for positioning
+      if (offsetX !== 0 || offsetY !== 0) {
+        cloneInstanceGroup.setAttribute("transform", `translate(${offsetX},${offsetY})`);
+      }
+      
+      // Clone all template elements
+      templateElements.forEach(elem => {
+        if (elem) {
+          const clone = copyElem(elem);
+          cloneInstanceGroup.appendChild(clone);
+        }
+      });
+      
+      cloneGroup.appendChild(cloneInstanceGroup);
+      batchCmd.addSubCommand(new InsertElementCommand(cloneInstanceGroup));
+    }
+  }
+
+  addCommandToHistory(batchCmd);
+  call("changed", [cloneGroup]);
+  return true;
+};
+
 
 // Function: pushGroupProperties
 // Pushes all appropriate parent group properties down to its children, then

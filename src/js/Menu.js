@@ -8,6 +8,9 @@ MD.Menu = function(){
   $('#tool_topath').on("click", editor.convertToPath);
   $('#tool_group').on("click", editor.groupSelected);
   $('#tool_ungroup').on("click", editor.ungroupSelected);
+  $('#tool_parametric_clone').on("click", function() {
+    editor.modal.parametricClone.open();
+  });
   if (window.location.host === "editor.method.ac") {
     $('#modal_donate').show();
     $('#sponsors').show();
