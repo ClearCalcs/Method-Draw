@@ -347,8 +347,7 @@ editor.modal = {
         }
       }
       
-      // Store the render function on the modal object so it can be called later
-      modal.renderParametersList = renderParametersList;
+      // Note: renderParametersList will be attached to the modal instance after construction
       
       // Show parameter form
       function showParameterForm(isEdit = false, parameterId = null) {
@@ -606,4 +605,144 @@ editor.modal = {
       });
     }
   })
+};
+
+// Attach renderParametersList function to the actual modal instance after construction
+editor.modal.parameters.renderParametersList = function() {
+  const parametersContainer = editor.modal.parameters.el.querySelector('#parameters-container');
+  const parametersTable = editor.modal.parameters.el.querySelector('#parameters-table');
+  const parametersEmpty = editor.modal.parameters.el.querySelector('#parameters-empty');
+  const parametersTBody = editor.modal.parameters.el.querySelector('#parameters-tbody');
+  
+  const parameters = editor.parametersManager.getParameters();
+  const paramIds = Object.keys(parameters);
+  
+  if (paramIds.length === 0) {
+    parametersTable.style.display = 'none';
+    parametersEmpty.style.display = 'block';
+  } else {
+    parametersTable.style.display = 'table';
+    parametersEmpty.style.display = 'none';
+    
+    parametersTBody.innerHTML = '';
+    
+    // Group parameters by parametric clone groups
+    const cloneGroups = {};
+    const regularParams = [];
+    
+    paramIds.forEach(id => {
+      const param = parameters[id];
+      // Check if this is a parametric clone parameter by looking for the timestamp pattern
+      const timestampMatch = param.name.match(/^clone_(cols|rows|spacing_x|spacing_y)_(\d+)$/);
+      if (timestampMatch) {
+        const timestamp = timestampMatch[2];
+        if (!cloneGroups[timestamp]) {
+          cloneGroups[timestamp] = {
+            cols: null,
+            rows: null,
+            spacing_x: null,
+            spacing_y: null
+          };
+        }
+        cloneGroups[timestamp][timestampMatch[1]] = { id, param };
+      } else {
+        regularParams.push({ id, param });
+      }
+    });
+    
+    // Render regular parameters first
+    regularParams.forEach(({ id, param }) => {
+      const row = document.createElement('tr');
+      row.style.borderBottom = '1px solid #eee';
+      
+      row.innerHTML = 
+        '<td style="padding: 8px;">@' + param.name + '</td>' +
+        '<td style="padding: 8px;">' + editor.parametersManager.PARAM_TYPES[param.type].label + '</td>' +
+        '<td style="padding: 8px;">' + param.defaultValue + '</td>' +
+        '<td style="padding: 8px;">' +
+          '<button class="edit-param-btn" data-id="' + id + '" ' +
+                  'style="background: #007cba; color: white; border: none; padding: 4px 8px; border-radius: 3px; cursor: pointer; margin-right: 5px;">Edit</button>' +
+          '<button class="delete-param-btn" data-id="' + id + '" ' +
+                  'style="background: #d63031; color: white; border: none; padding: 4px 8px; border-radius: 3px; cursor: pointer;">Delete</button>' +
+        '</td>';
+      
+      parametersTBody.appendChild(row);
+    });
+    
+    // Add separator if we have both regular params and clone groups
+    if (regularParams.length > 0 && Object.keys(cloneGroups).length > 0) {
+      const separatorRow = document.createElement('tr');
+      separatorRow.innerHTML = '<td colspan="4" style="padding: 12px 8px; background: #f8f8f8; font-weight: bold; color: #666;">Parametric Clone Groups</td>';
+      parametersTBody.appendChild(separatorRow);
+    }
+    
+    // Render parametric clone groups
+    Object.keys(cloneGroups).forEach(timestamp => {
+      const group = cloneGroups[timestamp];
+      
+      // Create group header
+      const headerRow = document.createElement('tr');
+      headerRow.style.background = '#f5f5f5';
+      headerRow.innerHTML = '<td colspan="4" style="padding: 8px; font-weight: bold;">Clone Group ' + timestamp + '</td>';
+      parametersTBody.appendChild(headerRow);
+      
+      // Render group parameters in order: cols, rows, spacing_x, spacing_y
+      ['cols', 'rows', 'spacing_x', 'spacing_y'].forEach(type => {
+        if (group[type]) {
+          const { id, param } = group[type];
+          const row = document.createElement('tr');
+          row.style.borderBottom = '1px solid #eee';
+          row.style.paddingLeft = '16px';
+          
+          // Friendly names for grid parameters
+          const friendlyNames = {
+            cols: 'Columns',
+            rows: 'Rows', 
+            spacing_x: 'Horizontal Spacing',
+            spacing_y: 'Vertical Spacing'
+          };
+          
+          row.innerHTML = 
+            '<td style="padding: 8px; padding-left: 16px; color: #666;">└ ' + friendlyNames[type] + '</td>' +
+            '<td style="padding: 8px;">' + editor.parametersManager.PARAM_TYPES[param.type].label + '</td>' +
+            '<td style="padding: 8px;">' + param.defaultValue + '</td>' +
+            '<td style="padding: 8px;">' +
+              '<button class="edit-param-btn" data-id="' + id + '" ' +
+                      'style="background: #007cba; color: white; border: none; padding: 4px 8px; border-radius: 3px; cursor: pointer; margin-right: 5px;">Edit</button>' +
+              '<button class="delete-param-btn" data-id="' + id + '" ' +
+                      'style="background: #d63031; color: white; border: none; padding: 4px 8px; border-radius: 3px; cursor: pointer;">Delete</button>' +
+            '</td>';
+          
+          parametersTBody.appendChild(row);
+        }
+      });
+    });
+    
+    // Add event listeners for edit/delete buttons (simplified for now)
+    editor.modal.parameters.el.querySelectorAll('.edit-param-btn').forEach(btn => {
+      btn.addEventListener('click', function() {
+        // TODO: Implement edit functionality
+      });
+    });
+    
+    editor.modal.parameters.el.querySelectorAll('.delete-param-btn').forEach(btn => {
+      btn.addEventListener('click', function() {
+        const id = this.dataset.id;
+        const param = editor.parametersManager.getParameter(id);
+        if (param && confirm("Are you sure you want to delete parameter \"@" + param.name + "\"?")) {
+          try {
+            editor.parametersManager.deleteParameter(id);
+            editor.modal.parameters.renderParametersList(); // Re-render after deletion
+            
+            // Update property validation autocomplete
+            if (editor.propertyValidation) {
+              editor.propertyValidation.addParameterAutocomplete();
+            }
+          } catch (error) {
+            alert('Error deleting parameter: ' + error.message);
+          }
+        }
+      });
+    });
+  }
 };

@@ -751,11 +751,17 @@ if (typeof module !== 'undefined' && module.exports) {
   }
 
   function parameters(){
-    // Refresh the parameters list before opening
+    if (!editor.modal || !editor.modal.parameters) {
+      console.error('editor.modal.parameters is not available');
+      return;
+    }
+    
+    editor.modal.parameters.open();
+    
+    // Ensure the parameters list is rendered when modal opens
     if (editor.modal.parameters.renderParametersList) {
       editor.modal.parameters.renderParametersList();
     }
-    editor.modal.parameters.open();
   }
 
   function loadFromUrl(url, cb){
