@@ -11,6 +11,7 @@ MD.Parameters = function(){
     text: { label: 'Text', defaultValue: '' },
     color: { label: 'Color', defaultValue: '#000000' },
     boolean: { label: 'Boolean', defaultValue: false },
+    equation: { label: 'Equation', defaultValue: '0' },
     grid_cols: { label: 'Grid Columns', defaultValue: 3 },
     grid_rows: { label: 'Grid Rows', defaultValue: 2 },
     grid_spacing_x: { label: 'Horizontal Spacing', defaultValue: 50 },
@@ -133,6 +134,79 @@ MD.Parameters = function(){
     return Object.values(params).map(param => param.name);
   }
 
+  // Evaluate equation with parameter references
+  function evaluateEquation(equation, visited = new Set()) {
+    if (typeof equation !== 'string') {
+      return equation;
+    }
+    
+    // Replace parameter references with their values
+    let processedEquation = equation;
+    const paramReferenceRegex = /@([a-zA-Z_][a-zA-Z0-9_]*)/g;
+    let match;
+    
+    while ((match = paramReferenceRegex.exec(equation)) !== null) {
+      const paramName = match[1];
+      const fullMatch = match[0]; // e.g., "@width"
+      
+      // Check for circular dependencies
+      if (visited.has(paramName)) {
+        console.error(`Circular dependency detected involving parameter: ${paramName}`);
+        return 0;
+      }
+      
+      const param = getParameterByName(paramName);
+      if (!param) {
+        console.warn(`Parameter @${paramName} not found in equation, treating as 0`);
+        processedEquation = processedEquation.replace(fullMatch, '0');
+        continue;
+      }
+      
+      let resolvedValue;
+      if (param.type === 'equation') {
+        // Recursively resolve equation parameters
+        const newVisited = new Set(visited);
+        newVisited.add(paramName);
+        resolvedValue = evaluateEquation(param.defaultValue, newVisited);
+      } else {
+        resolvedValue = resolveParameterValueDirect(param);
+      }
+      
+      // Replace the parameter reference with its resolved value
+      processedEquation = processedEquation.replace(fullMatch, resolvedValue);
+    }
+    
+    // Evaluate the mathematical expression
+    try {
+      // Basic safety check - only allow numbers, operators, parentheses, and whitespace
+      if (!/^[0-9+\-*/.() \t]+$/.test(processedEquation)) {
+        throw new Error('Invalid characters in equation');
+      }
+      
+      // Use Function constructor for safe evaluation (better than eval)
+      const result = new Function('return ' + processedEquation)();
+      
+      if (typeof result !== 'number' || isNaN(result)) {
+        throw new Error('Equation did not evaluate to a number');
+      }
+      
+      return result;
+    } catch (error) {
+      console.error(`Error evaluating equation "${equation}": ${error.message}`);
+      return 0;
+    }
+  }
+  
+  // Helper function to resolve parameter value directly (without equation evaluation)
+  function resolveParameterValueDirect(param) {
+    const resolvedValue = param.defaultValue;
+    if (param.type === 'number') {
+      const num = parseFloat(resolvedValue);
+      return isNaN(num) ? 0 : num;
+    }
+    return resolvedValue;
+  }
+
   // Resolve parameter reference (e.g., "@width" -> actual value)
   function resolveParameterValue(value) {
     if (typeof value !== 'string' || !value.startsWith('@')) {
@@ -147,19 +221,41 @@ MD.Parameters = function(){
       return value;
     }
     
-    // Ensure proper type conversion
-    const resolvedValue = param.defaultValue;
-    if (param.type === 'number') {
-      const num = parseFloat(resolvedValue);
-      return isNaN(num) ? 0 : num;
+    // Handle equation type parameters
+    if (param.type === 'equation') {
+      return evaluateEquation(param.defaultValue);
     }
     
-    return resolvedValue;
+    // Ensure proper type conversion for other types
+    return resolveParameterValueDirect(param);
   }
 
   // Check if a value is a parameter reference
   function isParameterReference(value) {
     return typeof value === 'string' && value.startsWith('@') && value.length > 1;
+  }
+
+  // Validate equation syntax
+  function validateEquationSyntax(equation) {
+    if (typeof equation !== 'string') {
+      return false;
+    }
+    
+    // Basic syntax validation - check for valid characters only
+    if (!/^[0-9+\-*/.()@ \t_a-zA-Z]+$/.test(equation)) {
+      return false;
+    }
+    
+    // Check for valid parameter references
+    const paramReferenceRegex = /@([a-zA-Z_][a-zA-Z0-9_]*)/g;
+    let match;
+    while ((match = paramReferenceRegex.exec(equation)) !== null) {
+      const paramName = match[1];
+      // Allow parameter references even if they don't exist yet (for forward references)
+      // The actual resolution will handle missing parameters gracefully
+    }
+    
+    return true;
   }
 
   // Validate parameter value for its type
@@ -178,6 +274,11 @@ MD.Parameters = function(){
         return PARAM_TYPES.color.defaultValue;
       case 'boolean':
         return Boolean(value);
+      case 'equation':
+        if (validateEquationSyntax(value)) {
+          return String(value);
+        }
+        return PARAM_TYPES.equation.defaultValue;
       default:
         return value;
     }
@@ -194,6 +295,8 @@ MD.Parameters = function(){
   this.resolveParameterValue = resolveParameterValue;
   this.isParameterReference = isParameterReference;
   this.validateParameterValue = validateParameterValue;
+  this.validateEquationSyntax = validateEquationSyntax;
+  this.evaluateEquation = evaluateEquation;
   this.isValidParameterName = isValidParameterName;
   this.parameterExists = parameterExists;
   this.PARAM_TYPES = PARAM_TYPES;

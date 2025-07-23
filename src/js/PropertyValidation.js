@@ -20,7 +20,20 @@ MD.PropertyValidation = function() {
     // Check if it's a valid parameter reference
     if (PARAM_REFERENCE_PATTERN.test(value)) {
       const paramName = value.substring(1);
-      return editor.parametersManager.getParameterByName(paramName) !== null;
+      const param = editor.parametersManager.getParameterByName(paramName);
+      if (!param) return false;
+      
+      // For equation parameters, validate that they can be resolved to a number
+      if (param.type === 'equation') {
+        try {
+          const resolvedValue = editor.parametersManager.resolveParameterValue(value);
+          return typeof resolvedValue === 'number' && !isNaN(resolvedValue);
+        } catch (error) {
+          return false;
+        }
+      }
+      
+      return true;
     }
     
     return false;

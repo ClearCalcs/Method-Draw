@@ -476,9 +476,21 @@ MD.Editor = function(){
     const serializer = new XMLSerializer();
     let modifiedSvgString = serializer.serializeToString(svgDoc.documentElement);
     
-    // Generate parameter list and default values
-    const paramNames = Object.keys(paramMap);
-    const paramDefaults = paramNames.map(name => {
+    // Separate input parameters from equation parameters
+    const inputParams = [];
+    const equationParams = [];
+    
+    Object.keys(paramMap).forEach(name => {
+      const param = paramMap[name];
+      if (param.type === 'equation') {
+        equationParams.push(name);
+      } else {
+        inputParams.push(name);
+      }
+    });
+    
+    // Generate parameter list and default values for input parameters only
+    const paramDefaults = inputParams.map(name => {
       const param = paramMap[name];
       let defaultValue = param.defaultValue;
       
@@ -498,18 +510,40 @@ MD.Editor = function(){
       .replace(/`/g, '\\`')      // Escape backticks
       .replace(/\$(?!{)/g, '\\$'); // Escape $ that aren't part of ${...}
       
+    // Generate equation calculation code
+    const equationCalculations = equationParams.map(name => {
+      const param = paramMap[name];
+      const equation = param.defaultValue;
+      
+      // Replace parameter references in equation with variable names
+      let processedEquation = equation;
+      const paramReferenceRegex = /@([a-zA-Z_][a-zA-Z0-9_]*)/g;
+      processedEquation = processedEquation.replace(paramReferenceRegex, '$1');
+      
+      return `  const ${name} = (${processedEquation});`;
+    }).join('\n');
+
     // Generate the function
-    const hasParams = paramNames.length > 0;
-    const paramComment = hasParams 
-      ? paramNames.map(name => ` * @param {${paramMap[name].type}} ${name} - Default: ${paramMap[name].defaultValue}`).join('\n')
+    const hasInputParams = inputParams.length > 0;
+    const hasEquationParams = equationParams.length > 0;
+    const hasAnyParams = hasInputParams || hasEquationParams;
+    
+    const inputParamComment = hasInputParams 
+      ? inputParams.map(name => ` * @param {${paramMap[name].type}} ${name} - Default: ${paramMap[name].defaultValue}`).join('\n')
+      : '';
+    const equationParamComment = hasEquationParams
+      ? equationParams.map(name => ` * @calculated {number} ${name} - Equation: ${paramMap[name].defaultValue}`).join('\n')
+      : '';
+    const paramComment = hasAnyParams 
+      ? [inputParamComment, equationParamComment].filter(c => c).join('\n')
       : ' * No parameters defined';
       
-    const functionParams = hasParams ? `{${paramNames.join(', ')}} = {}` : '';
-    const defaultAssignments = hasParams 
-      ? paramNames.map((name, i) => `  const ${name}_val = ${name} !== undefined ? ${name} : ${paramDefaults[i]};`).join('\n')
+    const functionParams = hasInputParams ? `{${inputParams.join(', ')}} = {}` : '';
+    const defaultAssignments = hasInputParams 
+      ? inputParams.map((name, i) => `  const ${name}_val = ${name} !== undefined ? ${name} : ${paramDefaults[i]};`).join('\n')
       : '';
-    const variableDeclaration = hasParams 
-      ? paramNames.map(name => `  const ${name} = ${name}_val;`).join('\n')
+    const variableDeclaration = hasInputParams 
+      ? inputParams.map(name => `  const ${name} = ${name}_val;`).join('\n')
       : '';
     
     const functionBody = `/**
@@ -522,6 +556,7 @@ ${paramComment}
 function generateSVG(${functionParams}) {
 ${defaultAssignments}
 ${variableDeclaration}
+${equationCalculations ? '\n' + equationCalculations : ''}
 ${cloneHelperFunctions.join('')}
   
   return \`${escapedSvg}\`;

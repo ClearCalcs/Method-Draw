@@ -127,6 +127,7 @@ editor.modal = {
               <option value="text">Text</option>
               <option value="color">Color</option>
               <option value="boolean">Boolean</option>
+              <option value="equation">Equation</option>
             </select>
           </div>
           
@@ -211,6 +212,10 @@ editor.modal = {
             case 'color':
               currentElement.type = 'color';
               currentElement.placeholder = '';
+              break;
+            case 'equation':
+              currentElement.type = 'text';
+              currentElement.placeholder = 'e.g., 2 * @width + 10';
               break;
             default:
               currentElement.type = 'text';
