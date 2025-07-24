@@ -38,6 +38,7 @@ var svgns = "http://www.w3.org/2000/svg",
   xmlns = "http://www.w3.org/XML/1998/namespace",
   xmlnsns = "http://www.w3.org/2000/xmlns/", // see http://www.w3.org/TR/REC-xml-names/#xmlReserved
   se_ns = "http://svg-edit.googlecode.com",
+  md_ns = "http://methoddraw.com/parametric/1.0", // Method Draw parametric namespace
   htmlns = "http://www.w3.org/1999/xhtml",
   mathns = "http://www.w3.org/1998/Math/MathML";
 
@@ -5187,6 +5188,14 @@ this.svgToString = function(elem, indent) {
         });
       });
       
+      // Add Method Draw parametric namespace if we have parameters
+      if (typeof editor !== 'undefined' && editor.parametersManager) {
+        var parameters = editor.parametersManager.getParameters();
+        if (parameters && Object.keys(parameters).length > 0) {
+          out.push(' xmlns:md="' + md_ns + '"');
+        }
+      }
+      
       var i = attrs.length;
       var attr_names = ['width','height','xmlns','x','y','viewBox','id','overflow'];
       while (i--) {
@@ -5253,6 +5262,26 @@ this.svgToString = function(elem, indent) {
       out.push(">");
       indent++;
       var bOneLine = false;
+      
+      // Add parametric metadata for root element
+      if(elem.id === 'svgcontent' && typeof editor !== 'undefined' && editor.parametersManager) {
+        var parameters = editor.parametersManager.getParameters();
+        if (parameters && Object.keys(parameters).length > 0) {
+          out.push("\n");
+          for (var j=0; j<indent; j++) out.push(" ");
+          out.push("<metadata>");
+          out.push("\n");
+          for (var j=0; j<=indent; j++) out.push(" ");
+          out.push("<md:parameters>");
+          out.push("<![CDATA[");
+          out.push(JSON.stringify(parameters));
+          out.push("]]>");
+          out.push("</md:parameters>");
+          out.push("\n");
+          for (var j=0; j<indent; j++) out.push(" ");
+          out.push("</metadata>");
+        }
+      }
       
       for (var i=0; i<childs.length; i++)
       {
@@ -5831,6 +5860,38 @@ this.setSvgString = function(xmlString) {
     // Put all paint elems in defs
     
     content.find('linearGradient, radialGradient, pattern').appendTo(findDefs());
+
+    // Restore parametric data from metadata
+    var metadataElem = content.find('metadata md\\:parameters, metadata parameters').first();
+    if (metadataElem.length > 0) {
+      try {
+        var parametersJson = metadataElem.text().trim();
+        if (parametersJson) {
+          var parameters = JSON.parse(parametersJson);
+          if (typeof editor !== 'undefined' && editor.parametersManager && parameters) {
+            // Clear existing parameters and restore from SVG
+            state.set('canvasParameters', parameters);
+            console.log('Restored parametric data:', parameters);
+            
+            // Trigger parameter UI refresh if parameters modal is available
+            if (editor.modal && editor.modal.parameters && editor.modal.parameters.renderParametersList) {
+              setTimeout(function() {
+                editor.modal.parameters.renderParametersList();
+              }, 100);
+            }
+            
+            // Restore parameter references on elements after a short delay to ensure DOM is ready
+            setTimeout(function() {
+              if (editor.propertyValidation && editor.propertyValidation.restoreParameterReferences) {
+                editor.propertyValidation.restoreParameterReferences();
+              }
+            }, 200);
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to parse parametric metadata:', e);
+      }
+    }
 
     svgcontent.querySelectorAll('textPath').forEach(function(el){
       const href = svgCanvas.getHref(el);
