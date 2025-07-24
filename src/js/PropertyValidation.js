@@ -1,6 +1,9 @@
 MD.PropertyValidation = function() {
   const _self = this;
   
+  // Global flag to prevent dropdown recreation during parameter creation
+  let isCreatingParameterFromAutocomplete = false;
+  
   // Pattern to match parameter references (@paramName)
   const PARAM_REFERENCE_PATTERN = /^@[a-zA-Z_][a-zA-Z0-9_]*$/;
   
@@ -53,6 +56,7 @@ MD.PropertyValidation = function() {
   
   // Add visual feedback to input field based on validation
   function updateInputValidation(input) {
+    if (!input || !input.value) return; // Add null check
     let value = input.value.trim();
     
     // Handle parameter display format: "@width (200)" - extract just the parameter reference
@@ -268,39 +272,441 @@ MD.PropertyValidation = function() {
   
   // Add autocomplete functionality for parameter names
   function addParameterAutocomplete() {
-    // Create a datalist element for parameter suggestions
-    let datalist = document.getElementById('parameter-suggestions');
-    if (!datalist) {
-      datalist = document.createElement('datalist');
-      datalist.id = 'parameter-suggestions';
-      document.body.appendChild(datalist);
+    // If we're in the middle of autocomplete parameter creation, skip recreation
+    if (isCreatingParameterFromAutocomplete) {
+      return;
     }
     
-    // Update the datalist with current parameters
-    function updateParameterSuggestions() {
+    // Remove any existing dropdown elements first
+    const allPossibleDropdowns = document.querySelectorAll(
+      '#parameter-autocomplete-dropdown, ' +
+      '.parameter-autocomplete-dropdown, ' +
+      '[class*="parameter-autocomplete"], ' +
+      '[id*="parameter-autocomplete"]'
+    );
+    allPossibleDropdowns.forEach((el) => {
+      el.style.display = 'none !important';
+      el.style.visibility = 'hidden !important';
+      el.style.opacity = '0 !important';
+      el.innerHTML = '';
+      if (el.parentNode) {
+        el.parentNode.removeChild(el);
+      }
+    });
+    
+    // Remove old datalist if it exists
+    const oldDatalist = document.getElementById('parameter-suggestions');
+    if (oldDatalist) {
+      oldDatalist.remove();
+    }
+    
+    // Create custom dropdown element
+    let dropdown = document.getElementById('parameter-autocomplete-dropdown');
+    if (!dropdown) {
+      dropdown = document.createElement('div');
+      dropdown.id = 'parameter-autocomplete-dropdown';
+      dropdown.className = 'parameter-autocomplete-dropdown';
+      document.body.appendChild(dropdown);
+    }
+    
+    // Always ensure dropdown is clean and hidden when initializing
+    dropdown.style.display = 'none';
+    dropdown.style.visibility = 'hidden';
+    dropdown.innerHTML = '';
+    
+    let currentInput = null;
+    let highlightedIndex = -1;
+    let currentParams = [];
+    let currentTypedText = '';
+    
+    // Store autocomplete context for parameter creation
+    let autocompleteContext = {
+      input: null,
+      inputSelector: '',
+      inputAttr: '',
+      parameterName: '',
+      active: false
+    };
+    
+    // Show dropdown with parameter suggestions
+    function showDropdown(input, typedText) {
       if (!editor.parametersManager) return;
+      
+      // Ensure dropdown is back in DOM if it was removed
+      if (!dropdown.parentNode) {
+        document.body.appendChild(dropdown);
+      }
+      
+      currentInput = input;
+      currentTypedText = typedText;
+      
+      // Store context for potential parameter creation
+      const inputAttr = input.getAttribute('data-attr') || '';
+      const inputId = input.id || '';
+      const inputSelector = inputId ? `#${inputId}` : `input[data-attr="${inputAttr}"]`;
+      
+      autocompleteContext = {
+        input: input,
+        inputSelector: inputSelector,
+        inputAttr: inputAttr,
+        parameterName: typedText,
+        active: false // Will be set to true if create option is clicked
+      };
+      
+      // Get current parameters
       const paramNames = editor.parametersManager.getParameterNames();
-      datalist.innerHTML = paramNames.map(name => `<option value="@${name}">@${name}</option>`).join('');
+      
+      // Filter parameters based on typed text (without @)
+      const filterText = typedText.toLowerCase();
+      currentParams = paramNames.filter(name => 
+        name.toLowerCase().includes(filterText) || filterText === ''
+      );
+      
+      // Build dropdown content
+      let html = '';
+      
+      // Add existing parameters
+      currentParams.forEach((name, index) => {
+        html += `<div class="parameter-autocomplete-item" data-index="${index}" data-value="@${name}">@${name}</div>`;
+      });
+      
+      // Add "Create parameter" option if we have typed text
+      if (typedText.length > 0) {
+        const createIndex = currentParams.length;
+        html += `<div class="parameter-autocomplete-create" data-index="${createIndex}" data-create="true">Create '@${typedText}'...</div>`;
+      }
+      
+      dropdown.innerHTML = html;
+      
+      // Position dropdown below the input
+      const inputRect = input.getBoundingClientRect();
+      dropdown.style.left = inputRect.left + 'px';
+      dropdown.style.top = (inputRect.bottom + 2) + 'px';
+      dropdown.style.display = 'block';
+      dropdown.style.visibility = 'visible';
+      
+      // Reset highlighted index
+      highlightedIndex = -1;
+      
+      // Add click handlers to dropdown items
+      dropdown.querySelectorAll('.parameter-autocomplete-item, .parameter-autocomplete-create').forEach(item => {
+        item.addEventListener('click', function(e) {
+          e.preventDefault();
+          e.stopPropagation();
+          selectItem(parseInt(this.getAttribute('data-index')));
+        });
+      });
+    }
+    
+    // Hide dropdown
+    function hideDropdown() {
+      // Find ALL dropdown elements that might exist
+      const allDropdowns = document.querySelectorAll('#parameter-autocomplete-dropdown, .parameter-autocomplete-dropdown');
+      
+      // Hide all of them
+      allDropdowns.forEach((dd) => {
+        dd.style.display = 'none';
+        dd.style.visibility = 'hidden';
+        dd.innerHTML = '';
+        if (dd.parentNode) {
+          dd.parentNode.removeChild(dd);
+        }
+      });
+      
+      // Hide our specific dropdown too
+      dropdown.style.display = 'none';
+      dropdown.style.visibility = 'hidden';
+      dropdown.innerHTML = '';
+      
+      // Also temporarily remove from DOM to ensure it's really gone
+      if (dropdown.parentNode) {
+        dropdown.parentNode.removeChild(dropdown);
+      }
+      
+      currentInput = null;
+      highlightedIndex = -1;
+      currentParams = [];
+    }
+    
+    // Highlight item by index
+    function highlightItem(index) {
+      // Remove previous highlights
+      dropdown.querySelectorAll('.highlighted').forEach(item => {
+        item.classList.remove('highlighted');
+      });
+      
+      // Highlight new item
+      const items = dropdown.querySelectorAll('.parameter-autocomplete-item, .parameter-autocomplete-create');
+      if (index >= 0 && index < items.length) {
+        items[index].classList.add('highlighted');
+        highlightedIndex = index;
+      } else {
+        highlightedIndex = -1;
+      }
+    }
+    
+    // Select item by index
+    function selectItem(index) {
+      const items = dropdown.querySelectorAll('.parameter-autocomplete-item, .parameter-autocomplete-create');
+      if (index < 0 || index >= items.length) return;
+      
+      const item = items[index];
+      const isCreateOption = item.hasAttribute('data-create');
+      
+              if (isCreateOption) {
+                  // Set global flag to prevent dropdown recreation
+        isCreatingParameterFromAutocomplete = true;
+          
+          // Activate the context for parameter creation BEFORE hiding dropdown
+          autocompleteContext.parameterName = currentTypedText;
+          autocompleteContext.active = true;
+          
+          // Hide dropdown completely
+          hideDropdown();
+          
+          // Nuclear option: destroy ALL possible dropdown elements
+          setTimeout(() => {
+            const allPossibleDropdowns = document.querySelectorAll(
+              '#parameter-autocomplete-dropdown, ' +
+              '.parameter-autocomplete-dropdown, ' +
+              '[class*="parameter-autocomplete"], ' +
+              '[id*="parameter-autocomplete"]'
+            );
+            allPossibleDropdowns.forEach(el => {
+              el.style.display = 'none !important';
+              el.style.visibility = 'hidden !important';
+              el.style.opacity = '0 !important';
+              el.innerHTML = '';
+              if (el.parentNode) {
+                el.parentNode.removeChild(el);
+              }
+            });
+          }, 1);
+        
+        // Try multiple approaches to open the modal
+        if (editor.modal && editor.modal.parameters) {
+          editor.modal.parameters.open();
+          
+          // Small delay to ensure modal is ready
+          setTimeout(() => {
+            // Try to access the showParameterForm function
+            if (editor.modal.parameters.showParameterForm) {
+              editor.modal.parameters.showParameterForm(false, null);
+              
+              // Pre-fill the name field
+              setTimeout(() => {
+                const nameInput = editor.modal.parameters.el.querySelector('#param-name');
+                if (nameInput) {
+                  nameInput.value = currentTypedText;
+                  nameInput.focus();
+                }
+              }, 50);
+            } else {
+              // Fallback 1: Try clicking the Add Parameter button
+              const addParameterBtn = editor.modal.parameters.el.querySelector('#add-parameter-btn');
+              if (addParameterBtn) {
+                addParameterBtn.click();
+                
+                // Pre-fill the name field after button click
+                setTimeout(() => {
+                  const nameInput = editor.modal.parameters.el.querySelector('#param-name');
+                  if (nameInput) {
+                    nameInput.value = currentTypedText;
+                    nameInput.focus();
+                  }
+                }, 50);
+              } else {
+                // Fallback 2: Manual approach - directly manipulate the modal DOM
+                const parametersContainer = editor.modal.parameters.el.querySelector('#parameters-container');
+                const parameterForm = editor.modal.parameters.el.querySelector('#parameter-form');
+                const parameterFormTitle = editor.modal.parameters.el.querySelector('#parameter-form-title');
+                const paramNameInput = editor.modal.parameters.el.querySelector('#param-name');
+                const parameterFormElement = editor.modal.parameters.el.querySelector('#parameter-form-element');
+                
+                if (parametersContainer && parameterForm && paramNameInput) {
+                  // Hide parameters list and show form
+                  parametersContainer.style.display = 'none';
+                  parameterForm.style.display = 'block';
+                  parameterFormTitle.textContent = 'Add Parameter';
+                  
+                  // Reset form and set name
+                  parameterFormElement.reset();
+                  paramNameInput.value = currentTypedText;
+                  paramNameInput.focus();
+                }
+              }
+            }
+          }, 100);
+        }
+      } else {
+        // Select existing parameter
+        const paramValue = item.getAttribute('data-value');
+        if (currentInput && paramValue) {
+          currentInput.value = paramValue;
+          hideDropdown();
+          
+          // Trigger input validation and parameter handling
+          if (currentInput && currentInput.value) {
+            updateInputValidation(currentInput);
+            handleParameterInput(currentInput);
+          }
+        }
+      }
+    }
+    
+    // Handle keyboard navigation
+    function handleKeydown(e) {
+      if (dropdown.style.display === 'none') return;
+      
+      const items = dropdown.querySelectorAll('.parameter-autocomplete-item, .parameter-autocomplete-create');
+      const itemCount = items.length;
+      
+      switch (e.key) {
+        case 'ArrowDown':
+          e.preventDefault();
+          highlightItem((highlightedIndex + 1) % itemCount);
+          break;
+          
+        case 'ArrowUp':
+          e.preventDefault();
+          highlightItem(highlightedIndex <= 0 ? itemCount - 1 : highlightedIndex - 1);
+          break;
+          
+        case 'Enter':
+          e.preventDefault();
+          if (highlightedIndex >= 0) {
+            selectItem(highlightedIndex);
+          }
+          break;
+          
+        case 'Escape':
+          e.preventDefault();
+          hideDropdown();
+          break;
+      }
     }
     
     // Add autocomplete to property inputs
     const propertyInputs = document.querySelectorAll('.attr_changer, input[data-attr]');
     propertyInputs.forEach(input => {
-      input.setAttribute('list', 'parameter-suggestions');
+      // Remove old list attribute if it exists
+      input.removeAttribute('list');
       
-      // Update suggestions when input gets focus
-      input.addEventListener('focus', updateParameterSuggestions);
-      
-      // Also trigger on input for @ character
+      // Handle input changes
       input.addEventListener('input', function(e) {
-        if (e.target.value.includes('@')) {
-          updateParameterSuggestions();
+        const value = e.target.value;
+        const atIndex = value.lastIndexOf('@');
+        
+        if (atIndex !== -1) {
+          // Extract text after the last @
+          const afterAt = value.substring(atIndex + 1);
+          
+          // Only show dropdown if @ is at the start or preceded by non-alphanumeric
+          const beforeAt = atIndex > 0 ? value.charAt(atIndex - 1) : ' ';
+          if (atIndex === 0 || !/[a-zA-Z0-9_]/.test(beforeAt)) {
+            showDropdown(this, afterAt);
+          }
+        } else {
+          hideDropdown();
         }
+      });
+      
+      // Handle keyboard events
+      input.addEventListener('keydown', handleKeydown);
+      
+      // Hide dropdown when input loses focus (with small delay to allow clicks)
+      input.addEventListener('blur', function() {
+        setTimeout(() => {
+          if (!dropdown.matches(':hover')) {
+            hideDropdown();
+          }
+        }, 150);
       });
     });
     
-    // Update suggestions when parameters change
-    updateParameterSuggestions();
+    // Hide dropdown when clicking outside
+    document.addEventListener('click', function(e) {
+      if (!dropdown.contains(e.target) && currentInput !== e.target) {
+        hideDropdown();
+      }
+    });
+    
+    // Function to handle parameter creation from autocomplete
+    function handleParameterCreated(parameterName) {
+      
+      if (autocompleteContext.active) {
+        // Clear context if empty parameter name (error case) or if parameter matches
+        if (!parameterName || parameterName === autocompleteContext.parameterName) {
+          if (parameterName) {
+            // Try to re-find the input field using multiple methods
+            let targetInput = autocompleteContext.input;
+            
+            // If the original reference is stale, try to find it again
+            if (!targetInput || !document.body.contains(targetInput)) {
+              // Try by selector first
+              if (autocompleteContext.inputSelector) {
+                targetInput = document.querySelector(autocompleteContext.inputSelector);
+              }
+              
+              // Fallback: find by data-attr
+              if (!targetInput && autocompleteContext.inputAttr) {
+                targetInput = document.querySelector(`input[data-attr="${autocompleteContext.inputAttr}"]`);
+              }
+            }
+            
+            if (targetInput) {
+              // Delay field update to happen after modal closes
+              setTimeout(() => {
+                // Update the original input with the new parameter reference
+                const paramRef = '@' + parameterName;
+                targetInput.value = paramRef;
+                
+                // Trigger validation and parameter handling immediately
+                updateInputValidation(targetInput);
+                handleParameterInput(targetInput);
+                
+                // Trigger change event to ensure all handlers are called
+                const changeEvent = new Event('change', { bubbles: true });
+                targetInput.dispatchEvent(changeEvent);
+                
+                // Also trigger input event
+                const inputEvent = new Event('input', { bubbles: true });
+                targetInput.dispatchEvent(inputEvent);
+                
+                // Hide any dropdown that might have been recreated
+                hideDropdown();
+              }, 50);
+            }
+          }
+          
+          // Store whether this was from autocomplete before clearing
+          const wasFromAutocomplete = autocompleteContext.active && parameterName === autocompleteContext.parameterName;
+          
+          // Clear context and global flag
+          autocompleteContext = {
+            input: null,
+            inputSelector: '',
+            inputAttr: '',
+            parameterName: '',
+            active: false
+          };
+          
+          // Clear global flag after a delay to ensure all initialization calls are blocked
+          setTimeout(() => {
+            isCreatingParameterFromAutocomplete = false;
+          }, 500);
+          
+          // Return true if this was triggered from autocomplete (so modal should close)
+          return wasFromAutocomplete;
+        }
+      }
+      
+      // Not from autocomplete, return false (normal behavior)
+      return false;
+    };
+    
+    // Expose the handleParameterCreated function globally
+    _self.handleParameterCreated = handleParameterCreated;
   }
   
   // Flag to prevent infinite loops during parameter reset
@@ -373,6 +779,11 @@ MD.PropertyValidation = function() {
   this.clearAllInputValidation = clearAllInputValidation;
   this.resetParameterizedAttributes = resetParameterizedAttributes;
   this.hasParameterReferences = hasParameterReferences;
+  this.hideDropdown = function() { 
+    if (typeof hideDropdown === 'function') {
+      hideDropdown(); 
+    }
+  };
   this.PARAM_REFERENCE_PATTERN = PARAM_REFERENCE_PATTERN;
   this.NUMERIC_PATTERN = NUMERIC_PATTERN;
 }; 

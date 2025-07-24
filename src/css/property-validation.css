@@ -93,6 +93,70 @@ datalist option {
   font-family: monospace;
 }
 
+/* Custom parameter autocomplete dropdown */
+.parameter-autocomplete-dropdown {
+  position: absolute;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 1000;
+  min-width: 150px;
+  font-family: monospace;
+  font-size: 12px;
+  display: none;
+}
+
+/* Force hide any lingering dropdown elements */
+.parameter-autocomplete-dropdown[style*="display: none"] {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+#parameter-autocomplete-dropdown[style*="display: none"] {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+.parameter-autocomplete-item {
+  padding: 8px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid #f0f0f0;
+  color: #007cba;
+  background: #f8f9fa;
+}
+
+.parameter-autocomplete-item:hover,
+.parameter-autocomplete-item.highlighted {
+  background: #007cba;
+  color: white;
+}
+
+.parameter-autocomplete-item:last-child {
+  border-bottom: none;
+}
+
+.parameter-autocomplete-create {
+  padding: 8px 12px;
+  cursor: pointer;
+  color: #28a745;
+  background: #f8fff9;
+  border-top: 1px solid #ddd;
+  font-style: italic;
+}
+
+.parameter-autocomplete-create:hover,
+.parameter-autocomplete-create.highlighted {
+  background: #28a745;
+  color: white;
+}
+
 /* Focus states for parameter inputs */
 input.param-reference:focus {
   box-shadow: 0 0 0 2px rgba(0, 124, 186, 0.25);

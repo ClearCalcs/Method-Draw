@@ -490,21 +490,69 @@ editor.modal = {
                           editor.parametersManager.addParameter(name, type, defaultValue, description);
           }
           
-          hideParameterForm();
-          renderParametersList();
+          // Handle autocomplete parameter creation (if triggered from autocomplete)
+          let shouldCloseModal = false;
+          if (editor.propertyValidation && editor.propertyValidation.handleParameterCreated) {
+            shouldCloseModal = editor.propertyValidation.handleParameterCreated(name);
+          }
           
-          // Update property validation autocomplete
-          if (editor.propertyValidation) {
+          if (shouldCloseModal) {
+            // Close the entire modal if this was triggered from autocomplete
+            // Use a small delay to ensure the callback completes first
+            setTimeout(() => {
+              // Reset modal state before closing
+              editingParameterId = null;
+              parametersContainer.style.display = 'block';
+              parameterForm.style.display = 'none';
+              parameterFormElement.reset();
+              
+              editor.modal.parameters.close();
+              
+              // Hide any autocomplete dropdown after modal closes
+              if (editor.propertyValidation && editor.propertyValidation.hideDropdown) {
+                setTimeout(() => {
+                  editor.propertyValidation.hideDropdown();
+                }, 50);
+              }
+            }, 10);
+          } else {
+            // Normal parameter manager flow
+            hideParameterForm();
+            renderParametersList();
+          }
+          
+          // Update property validation autocomplete (but not if this was from autocomplete)
+          if (editor.propertyValidation && !shouldCloseModal) {
             editor.propertyValidation.addParameterAutocomplete();
           }
         } catch (error) {
           alert('Error saving parameter: ' + error.message);
+          
+          // Clear autocomplete context on error too
+          if (editor.propertyValidation && editor.propertyValidation.handleParameterCreated) {
+            editor.propertyValidation.handleParameterCreated(''); // Empty name clears context
+          }
         }
       });
       
       // Expose functions for use by renderParametersList
       this.editParameter = editParameter;
       this.showParameterForm = showParameterForm;
+      
+      // Reset modal to default state when opened
+      this.open = function() {
+        // Call the original open method
+        MD.Modal.prototype.open.call(this);
+        
+        // Reset to show parameters list
+        editingParameterId = null;
+        parametersContainer.style.display = 'block';
+        parameterForm.style.display = 'none';
+        parameterFormElement.reset();
+        
+        // Render the parameters list
+        renderParametersList();
+      };
     }
   }),
   
