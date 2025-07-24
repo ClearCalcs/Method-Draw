@@ -8126,16 +8126,23 @@ this.groupSelectedElements = function(type) {
 
 // Function: createParametricCloneGroup  
 // Creates a parametric clone group with grid layout
-this.createParametricCloneGroup = function(templateElements, colsParamName, rowsParamName, spacingXParamName, spacingYParamName) {
+this.createParametricCloneGroup = function(templateElements, cloneParamName) {
   if (!templateElements || templateElements.length === 0) {
     return null;
   }
 
-  // Get the parameter values
-  const cols = editor.parametersManager.resolveParameterValue('@' + colsParamName);
-  const rows = editor.parametersManager.resolveParameterValue('@' + rowsParamName);
-  const spacingX = editor.parametersManager.resolveParameterValue('@' + spacingXParamName);
-  const spacingY = editor.parametersManager.resolveParameterValue('@' + spacingYParamName);
+  // Get the clone configuration parameter
+  const cloneConfig = editor.parametersManager.resolveParameterValue('@' + cloneParamName);
+  if (!cloneConfig || typeof cloneConfig !== 'object') {
+    console.error('Invalid clone configuration parameter:', cloneParamName);
+    return null;
+  }
+
+  // Extract values from the configuration object
+  const cols = cloneConfig.num_cols || 3;
+  const rows = cloneConfig.num_rows || 2;
+  const spacingX = cloneConfig.spacing_x || 50;
+  const spacingY = cloneConfig.spacing_y || 50;
 
   const batchCmd = new BatchCommand("Create Parametric Clone");
   
@@ -8146,10 +8153,7 @@ this.createParametricCloneGroup = function(templateElements, colsParamName, rows
     "attr": {
       "id": cloneGroupId,
       "data-parametric-clone": "true",
-      "data-cols-param": colsParamName,
-      "data-rows-param": rowsParamName,
-      "data-spacing-x-param": spacingXParamName,
-      "data-spacing-y-param": spacingYParamName
+      "data-clone-param": cloneParamName
     }
   });
 
@@ -8257,17 +8261,25 @@ this.updateParametricCloneGroup = function(cloneGroupId) {
     return false;
   }
 
-  // Get parameter names
-  const colsParamName = cloneGroup.getAttribute('data-cols-param');
-  const rowsParamName = cloneGroup.getAttribute('data-rows-param');
-  const spacingXParamName = cloneGroup.getAttribute('data-spacing-x-param');
-  const spacingYParamName = cloneGroup.getAttribute('data-spacing-y-param');
+  // Get the clone parameter name
+  const cloneParamName = cloneGroup.getAttribute('data-clone-param');
+  if (!cloneParamName) {
+    console.error('Clone parameter name not found in parametric clone group');
+    return false;
+  }
 
-  // Get updated parameter values
-  const cols = editor.parametersManager.resolveParameterValue('@' + colsParamName);
-  const rows = editor.parametersManager.resolveParameterValue('@' + rowsParamName);
-  const spacingX = editor.parametersManager.resolveParameterValue('@' + spacingXParamName);
-  const spacingY = editor.parametersManager.resolveParameterValue('@' + spacingYParamName);
+  // Get the clone configuration parameter
+  const cloneConfig = editor.parametersManager.resolveParameterValue('@' + cloneParamName);
+  if (!cloneConfig || typeof cloneConfig !== 'object') {
+    console.error('Invalid clone configuration parameter:', cloneParamName);
+    return false;
+  }
+
+  // Extract values from the configuration object
+  const cols = cloneConfig.num_cols || 3;
+  const rows = cloneConfig.num_rows || 2;
+  const spacingX = cloneConfig.spacing_x || 50;
+  const spacingY = cloneConfig.spacing_y || 50;
 
   const batchCmd = new BatchCommand("Update Parametric Clone");
 

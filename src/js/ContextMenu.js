@@ -83,6 +83,15 @@ MD.ContextMenu = function(){
           if (isParametricClone) {
             editor.editParametricClone(selectedElements[0]);
           } else {
+            // Clear any flags when opening from context menu
+            setTimeout(() => {
+              editor.modal.parametricClone.el.removeAttribute('data-opened-from-params');
+              // Clear the name field for new clones
+              const nameInput = editor.modal.parametricClone.el.querySelector('#clone-name');
+              if (nameInput) {
+                nameInput.value = '';
+              }
+            }, 50);
             editor.modal.parametricClone.open();
           }
           break;

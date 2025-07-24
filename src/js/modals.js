@@ -104,7 +104,7 @@ editor.modal = {
           </table>
         </div>
         <div style="margin-top: 20px; text-align: right;">
-          <button id="parameters-cancel-btn" style="background: #666; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; margin-right: 10px;">Cancel</button>
+          <button id="parameters-cancel-btn" style="background: #666; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; margin-right: 10px;">Close</button>
           <button id="add-parameter-btn" style="background: #007cba; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer;">Add Parameter</button>
         </div>
       </div>
@@ -145,7 +145,7 @@ editor.modal = {
           
           <div style="text-align: right;">
             <button type="button" id="parameter-form-cancel" 
-                    style="background: #666; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; margin-right: 10px;">Cancel</button>
+                    style="background: #666; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; margin-right: 10px;">Close</button>
             <button type="submit" id="parameter-form-save" 
                     style="background: #007cba; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer;">Save</button>
           </div>
@@ -272,7 +272,7 @@ editor.modal = {
             row.innerHTML = 
               '<td style="padding: 8px;">@' + param.name + '</td>' +
               '<td style="padding: 8px;">' + editor.parametersManager.PARAM_TYPES[param.type].label + '</td>' +
-              '<td style="padding: 8px;">' + param.defaultValue + '</td>' +
+              '<td style="padding: 8px; white-space: pre-line;">' + formatParameterValue(param) + '</td>' +
               '<td style="padding: 8px;">' +
                 '<button class="edit-param-btn" data-id="' + id + '" ' +
                         'style="background: #007cba; color: white; border: none; padding: 4px 8px; border-radius: 3px; cursor: pointer; margin-right: 5px;">Edit</button>' +
@@ -319,7 +319,7 @@ editor.modal = {
                 row.innerHTML = 
                   '<td style="padding: 8px; padding-left: 16px; color: #666;">└ ' + friendlyNames[type] + '</td>' +
                   '<td style="padding: 8px;">' + editor.parametersManager.PARAM_TYPES[param.type].label + '</td>' +
-                  '<td style="padding: 8px;">' + param.defaultValue + '</td>' +
+                  '<td style="padding: 8px; white-space: pre-line;">' + formatParameterValue(param) + '</td>' +
                   '<td style="padding: 8px;">' +
                     '<button class="edit-param-btn" data-id="' + id + '" ' +
                             'style="background: #007cba; color: white; border: none; padding: 4px 8px; border-radius: 3px; cursor: pointer; margin-right: 5px;">Edit</button>' +
@@ -389,7 +389,38 @@ editor.modal = {
       
       // Edit parameter
       function editParameter(id) {
-        showParameterForm(true, id);
+        const param = editor.parametersManager.getParameter(id);
+        
+        // If this is a clone configuration parameter, open the parametric clone modal instead
+        if (param && param.type === 'clone_config') {
+          // Find the clone group that uses this parameter
+          const cloneGroups = document.querySelectorAll('[data-parametric-clone="true"]');
+          let targetCloneGroup = null;
+          
+          cloneGroups.forEach(group => {
+            if (group.getAttribute('data-clone-param') === param.name) {
+              targetCloneGroup = group;
+            }
+          });
+          
+          if (targetCloneGroup) {
+            // Close the parameters modal
+            editor.modal.parameters.close();
+            
+            // Mark that we're opening from parameters manager
+            setTimeout(() => {
+              editor.modal.parametricClone.el.setAttribute('data-opened-from-params', 'true');
+            }, 50);
+            
+            // Open the parametric clone modal for editing
+            editor.editParametricClone(targetCloneGroup);
+          } else {
+            alert('Could not find the clone group associated with this parameter.');
+          }
+        } else {
+          // Regular parameter editing
+          showParameterForm(true, id);
+        }
       }
       
       // Delete parameter
@@ -448,8 +479,13 @@ editor.modal = {
         }
         
         try {
+          // Check for manual edit ID first, then fall back to regular editingParameterId
+          const manualEditId = el.getAttribute('data-manual-edit-id');
           if (editingParameterId) {
                           editor.parametersManager.updateParameter(editingParameterId, name, type, defaultValue, description);
+          } else if (manualEditId) {
+            editor.parametersManager.updateParameter(manualEditId, name, type, defaultValue, description);
+            el.removeAttribute('data-manual-edit-id'); // Clean up
           } else {
                           editor.parametersManager.addParameter(name, type, defaultValue, description);
           }
@@ -465,6 +501,10 @@ editor.modal = {
           alert('Error saving parameter: ' + error.message);
         }
       });
+      
+      // Expose functions for use by renderParametersList
+      this.editParameter = editParameter;
+      this.showParameterForm = showParameterForm;
     }
   }),
   
@@ -476,6 +516,12 @@ editor.modal = {
       </p>
       
       <div id="parametric-clone-form">
+        <div style="margin-bottom: 20px;">
+          <label for="clone-name" style="display: block; margin-bottom: 5px; font-weight: bold;">Clone Group Name:</label>
+          <input type="text" id="clone-name" placeholder="Enter a name for this clone group" 
+                 style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+        </div>
+        
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
           <div>
             <label for="clone-cols" style="display: block; margin-bottom: 5px; font-weight: bold;">Columns:</label>
@@ -504,7 +550,7 @@ editor.modal = {
         
         <div style="text-align: right; margin-top: 30px;">
           <button id="parametric-clone-cancel" style="background: #666; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; margin-right: 10px;">Cancel</button>
-          <button id="parametric-clone-create" style="background: #007cba; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer;">Create Clone</button>
+          <button id="parametric-clone-create" style="background: #007cba; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer;">Save</button>
         </div>
       </div>
     `,
@@ -512,58 +558,88 @@ editor.modal = {
     js: function(el) {
       // Handle cancel button
       el.querySelector('#parametric-clone-cancel').addEventListener('click', function() {
+        const openedFromParams = el.getAttribute('data-opened-from-params') === 'true';
         editor.modal.parametricClone.close();
+        
+        // If opened from Parameters Manager, reopen it
+        if (openedFromParams) {
+          setTimeout(() => {
+            editor.modal.parameters.open();
+          }, 100);
+        }
       });
       
       // Handle create button
       el.querySelector('#parametric-clone-create').addEventListener('click', function() {
+        const cloneName = el.querySelector('#clone-name').value.trim();
         const cols = parseInt(el.querySelector('#clone-cols').value) || 3;
         const rows = parseInt(el.querySelector('#clone-rows').value) || 2;
         const spacingX = parseInt(el.querySelector('#clone-spacing-x').value) || 50;
         const spacingY = parseInt(el.querySelector('#clone-spacing-y').value) || 50;
         
+        // Validate clone name
+        if (!cloneName) {
+          alert('Please enter a name for the clone group.');
+          return;
+        }
+        
+        // Check if name is valid parameter name
+        if (!editor.parametersManager.isValidParameterName(cloneName)) {
+          alert('Invalid parameter name. Use only letters, numbers, and underscores. Cannot start with a number.');
+          return;
+        }
+        
         const isEditing = el.getAttribute('data-editing-clone') === 'true';
         
         if (isEditing) {
           // Update existing parametric clone
-          const colsParam = el.getAttribute('data-cols-param');
-          const rowsParam = el.getAttribute('data-rows-param');
-          const spacingXParam = el.getAttribute('data-spacing-x-param');
-          const spacingYParam = el.getAttribute('data-spacing-y-param');
+          const cloneParam = el.getAttribute('data-clone-param');
           const cloneGroupId = el.getAttribute('data-clone-group-id');
           
           try {
-            // Update parameter values
             const parametersManager = editor.parametersManager;
-            const colsParamObj = parametersManager.getParameterByName(colsParam);
-            const rowsParamObj = parametersManager.getParameterByName(rowsParam);
-            const spacingXParamObj = parametersManager.getParameterByName(spacingXParam);
-            const spacingYParamObj = parametersManager.getParameterByName(spacingYParam);
+            const cloneParamObj = parametersManager.getParameterByName(cloneParam);
             
-            if (colsParamObj && rowsParamObj && spacingXParamObj && spacingYParamObj) {
-              // Get parameter IDs from the parameters object
+            if (cloneParamObj) {
+              // Check if renaming to a different name that already exists
+              if (cloneName !== cloneParam && parametersManager.parameterExists(cloneName)) {
+                const existingParam = parametersManager.getParameterByName(cloneName);
+                if (existingParam && existingParam.type === 'clone_config') {
+                  alert(`A parametric clone with the name "${cloneName}" already exists. Please choose a different name.`);
+                } else {
+                  alert(`A parameter with the name "${cloneName}" already exists. Please choose a different name.`);
+                }
+                return;
+              }
+              
+              // Get parameter ID
               const parameters = parametersManager.getParameters();
-              let colsId, rowsId, spacingXId, spacingYId;
+              let cloneParamId;
               
               Object.keys(parameters).forEach(id => {
                 const param = parameters[id];
-                if (param.name === colsParam) colsId = id;
-                if (param.name === rowsParam) rowsId = id;
-                if (param.name === spacingXParam) spacingXId = id;
-                if (param.name === spacingYParam) spacingYId = id;
+                if (param.name === cloneParam) cloneParamId = id;
               });
               
-              if (colsId) parametersManager.updateParameter(colsId, colsParam, 'grid_cols', cols, colsParamObj.description);
-              if (rowsId) parametersManager.updateParameter(rowsId, rowsParam, 'grid_rows', rows, rowsParamObj.description);
-              if (spacingXId) parametersManager.updateParameter(spacingXId, spacingXParam, 'grid_spacing_x', spacingX, spacingXParamObj.description);
-              if (spacingYId) parametersManager.updateParameter(spacingYId, spacingYParam, 'grid_spacing_y', spacingY, spacingYParamObj.description);
-              
-              // Regenerate the clone group
-              if (typeof svgCanvas.updateParametricCloneGroup === 'function') {
-                svgCanvas.updateParametricCloneGroup(cloneGroupId);
+              if (cloneParamId) {
+                const newConfig = { num_cols: cols, num_rows: rows, spacing_x: spacingX, spacing_y: spacingY };
+                parametersManager.updateParameter(cloneParamId, cloneName, 'clone_config', newConfig, cloneParamObj.description);
+                
+                // Update the clone group's data attribute if name changed
+                if (cloneName !== cloneParam) {
+                  const cloneGroup = svgedit.utilities.getElem(cloneGroupId);
+                  if (cloneGroup) {
+                    cloneGroup.setAttribute('data-clone-param', cloneName);
+                  }
+                }
+                
+                // Regenerate the clone group
+                if (typeof svgCanvas.updateParametricCloneGroup === 'function') {
+                  svgCanvas.updateParametricCloneGroup(cloneGroupId);
+                }
+                
+                alert('Parametric clone updated successfully.');
               }
-              
-              alert('Parametric clone updated successfully.');
             }
           } catch (error) {
             alert('Error updating parametric clone: ' + error.message);
@@ -571,22 +647,50 @@ editor.modal = {
           
           // Clear editing state
           el.removeAttribute('data-editing-clone');
-          el.removeAttribute('data-cols-param');
-          el.removeAttribute('data-rows-param');
-          el.removeAttribute('data-spacing-x-param');
-          el.removeAttribute('data-spacing-y-param');
+          el.removeAttribute('data-clone-param');
           el.removeAttribute('data-clone-group-id');
         } else {
+          // Check if parameter name already exists
+          if (editor.parametersManager.parameterExists(cloneName)) {
+            const existingParam = editor.parametersManager.getParameterByName(cloneName);
+            if (existingParam && existingParam.type === 'clone_config') {
+              alert(`A parametric clone with the name "${cloneName}" already exists. Please choose a different name.`);
+            } else {
+              alert(`A parameter with the name "${cloneName}" already exists. Please choose a different name.`);
+            }
+            return;
+          }
+          
+          // Double-check: look for existing clone groups with this name
+          const existingCloneGroups = document.querySelectorAll('[data-parametric-clone="true"]');
+          let nameAlreadyUsed = false;
+          existingCloneGroups.forEach(group => {
+            if (group.getAttribute('data-clone-param') === cloneName) {
+              nameAlreadyUsed = true;
+            }
+          });
+          
+          if (nameAlreadyUsed) {
+            alert(`A parametric clone with the name "${cloneName}" already exists in the canvas. Please choose a different name.`);
+            return;
+          }
+          
           // Create new parametric clone
           if (typeof editor.createParametricClone === 'function') {
-            editor.createParametricClone(cols, rows, spacingX, spacingY);
+            editor.createParametricClone(cloneName, cols, rows, spacingX, spacingY);
           }
         }
         
+        // Clear the flag before closing
+        el.removeAttribute('data-opened-from-params');
         editor.modal.parametricClone.close();
       });
       
       // Ensure input fields are clickable (fix for modal z-index issues)
+      el.querySelector('#clone-name').addEventListener('mousedown', function(e) {
+        e.stopPropagation();
+        this.focus();
+      });
       el.querySelector('#clone-cols').addEventListener('mousedown', function(e) {
         e.stopPropagation();
         this.focus();
@@ -606,6 +710,143 @@ editor.modal = {
     }
   })
 };
+
+// Helper function to format parameter display values
+function formatParameterValue(param) {
+  if (param.type === 'clone_config' && typeof param.defaultValue === 'object') {
+    const config = param.defaultValue;
+    return `${config.num_cols || 1}×${config.num_rows || 1} grid\n${config.spacing_x || 0} × ${config.spacing_y || 0} spacing`;
+  }
+  return param.defaultValue;
+}
+
+// Global editParameter function for parameters modal
+function editParameterGlobal(id) {
+  const param = editor.parametersManager.getParameter(id);
+  
+  // If this is a clone configuration parameter, open the parametric clone modal instead
+  if (param && param.type === 'clone_config') {
+    // Find the clone group that uses this parameter
+    const cloneGroups = document.querySelectorAll('[data-parametric-clone="true"]');
+    let targetCloneGroup = null;
+    
+    cloneGroups.forEach(group => {
+      if (group.getAttribute('data-clone-param') === param.name) {
+        targetCloneGroup = group;
+      }
+    });
+    
+    if (targetCloneGroup) {
+      // Close the parameters modal
+      editor.modal.parameters.close();
+      
+      // Mark that we're opening from parameters manager
+      setTimeout(() => {
+        editor.modal.parametricClone.el.setAttribute('data-opened-from-params', 'true');
+      }, 50);
+      
+      // Open the parametric clone modal for editing
+      editor.editParametricClone(targetCloneGroup);
+    } else {
+      alert('Could not find the clone group associated with this parameter.');
+    }
+  } else {
+    // Regular parameter editing - try multiple approaches
+    if (editor.modal.parameters.showParameterForm) {
+      editor.modal.parameters.showParameterForm(true, id);
+    } else if (editor.modal.parameters.editParameter) {
+      editor.modal.parameters.editParameter(id);
+    } else {
+      // Use manual parameter form approach
+      if (showParameterFormManually(param, id)) {
+        console.log('Successfully opened parameter form manually');
+      } else {
+        alert('Error: Cannot edit parameter. Please try closing and reopening the Parameters Manager.');
+      }
+    }
+  }
+}
+
+// Simple function to manually show parameter form for editing
+function showParameterFormManually(param, id) {
+  const modal = editor.modal.parameters;
+  const parametersContainer = modal.el.querySelector('#parameters-container');
+  const parameterForm = modal.el.querySelector('#parameter-form');
+  const parameterFormTitle = modal.el.querySelector('#parameter-form-title');
+  const paramNameInput = modal.el.querySelector('#param-name');
+  const paramTypeSelect = modal.el.querySelector('#param-type');
+  const paramDescriptionInput = modal.el.querySelector('#param-description');
+  
+  if (!parameterForm || !parametersContainer) return false;
+  
+  // Hide parameters list and show form (same as Add Parameter behavior)
+  parametersContainer.style.display = 'none';
+  parameterForm.style.display = 'block';
+  parameterFormTitle.textContent = 'Edit Parameter';
+  paramNameInput.value = param.name || '';
+  paramTypeSelect.value = param.type || 'text';
+  paramDescriptionInput.value = param.description || '';
+  
+  // Handle default value input based on type - use the same approach as the original function
+  const updateDefaultValueInput = () => {
+    const type = param.type;
+    let currentElement = modal.el.querySelector('#param-default');
+    
+    if (!currentElement) return; // Exit if no default input field found
+    
+    const baseStyle = 'width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; position: relative; z-index: 1001; pointer-events: auto;';
+    
+    if (type === 'boolean') {
+      // Replace input with select for boolean
+      if (currentElement.tagName !== 'SELECT') {
+        const select = document.createElement('select');
+        select.id = 'param-default';
+        select.style.cssText = baseStyle;
+        select.innerHTML = '<option value="false">False</option><option value="true">True</option>';
+        select.value = param.defaultValue === true || param.defaultValue === 'true' ? 'true' : 'false';
+        currentElement.parentNode.replaceChild(select, currentElement);
+      }
+    } else {
+      // Replace select with input for non-boolean types, or just update if already input
+      if (currentElement.tagName === 'SELECT') {
+        const input = document.createElement('input');
+        input.id = 'param-default';
+        input.style.cssText = baseStyle;
+        currentElement.parentNode.replaceChild(input, currentElement);
+        currentElement = input;
+      }
+      
+      // Set input properties based on type
+      switch (type) {
+        case 'number':
+          currentElement.type = 'number';
+          currentElement.value = param.defaultValue || '';
+          break;
+        case 'color':
+          currentElement.type = 'color';
+          currentElement.value = param.defaultValue || '#000000';
+          break;
+        default:
+          currentElement.type = 'text';
+          currentElement.value = param.defaultValue || '';
+          break;
+      }
+    }
+    
+    // Make it clickable
+    currentElement.addEventListener('mousedown', function(e) {
+      e.stopPropagation();
+      this.focus();
+    });
+  };
+  
+  updateDefaultValueInput();
+  
+  // Store the editing parameter ID for form submission
+  modal.el.setAttribute('data-manual-edit-id', id);
+  
+  return true;
+}
 
 // Attach renderParametersList function to the actual modal instance after construction
 editor.modal.parameters.renderParametersList = function() {
@@ -658,7 +899,7 @@ editor.modal.parameters.renderParametersList = function() {
       row.innerHTML = 
         '<td style="padding: 8px;">@' + param.name + '</td>' +
         '<td style="padding: 8px;">' + editor.parametersManager.PARAM_TYPES[param.type].label + '</td>' +
-        '<td style="padding: 8px;">' + param.defaultValue + '</td>' +
+        '<td style="padding: 8px; white-space: pre-line;">' + formatParameterValue(param) + '</td>' +
         '<td style="padding: 8px;">' +
           '<button class="edit-param-btn" data-id="' + id + '" ' +
                   'style="background: #007cba; color: white; border: none; padding: 4px 8px; border-radius: 3px; cursor: pointer; margin-right: 5px;">Edit</button>' +
@@ -705,7 +946,7 @@ editor.modal.parameters.renderParametersList = function() {
           row.innerHTML = 
             '<td style="padding: 8px; padding-left: 16px; color: #666;">└ ' + friendlyNames[type] + '</td>' +
             '<td style="padding: 8px;">' + editor.parametersManager.PARAM_TYPES[param.type].label + '</td>' +
-            '<td style="padding: 8px;">' + param.defaultValue + '</td>' +
+            '<td style="padding: 8px; white-space: pre-line;">' + formatParameterValue(param) + '</td>' +
             '<td style="padding: 8px;">' +
               '<button class="edit-param-btn" data-id="' + id + '" ' +
                       'style="background: #007cba; color: white; border: none; padding: 4px 8px; border-radius: 3px; cursor: pointer; margin-right: 5px;">Edit</button>' +
@@ -718,10 +959,10 @@ editor.modal.parameters.renderParametersList = function() {
       });
     });
     
-    // Add event listeners for edit/delete buttons (simplified for now)
+    // Add event listeners for edit/delete buttons
     editor.modal.parameters.el.querySelectorAll('.edit-param-btn').forEach(btn => {
       btn.addEventListener('click', function() {
-        // TODO: Implement edit functionality
+        editParameterGlobal(this.dataset.id);
       });
     });
     

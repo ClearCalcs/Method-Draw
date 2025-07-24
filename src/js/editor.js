@@ -400,14 +400,11 @@ MD.Editor = function(){
     const cloneHelperFunctions = [];
     
     cloneGroups.forEach((cloneGroup, index) => {
-      const colsParam = cloneGroup.getAttribute('data-cols-param');
-      const rowsParam = cloneGroup.getAttribute('data-rows-param');
-      const spacingXParam = cloneGroup.getAttribute('data-spacing-x-param');
-      const spacingYParam = cloneGroup.getAttribute('data-spacing-y-param');
+      const cloneParam = cloneGroup.getAttribute('data-clone-param');
       
       // Find template group
       const templateGroup = cloneGroup.querySelector('[data-template="true"]');
-      if (templateGroup) {
+      if (templateGroup && cloneParam) {
         // Get template elements as string
         const templateElements = Array.from(templateGroup.children).map(child => {
           return new XMLSerializer().serializeToString(child);
@@ -419,10 +416,11 @@ MD.Editor = function(){
         // Create helper function
         const helperFunction = `
   function ${funcName}() {
-    const cols = ${colsParam};
-    const rows = ${rowsParam};
-    const spacingX = ${spacingXParam};
-    const spacingY = ${spacingYParam};
+    const config = ${cloneParam};
+    const cols = config.num_cols;
+    const rows = config.num_rows;
+    const spacingX = config.spacing_x;
+    const spacingY = config.spacing_y;
     
     let elements = '';
     for (let row = 0; row < rows; row++) {
@@ -499,6 +497,9 @@ MD.Editor = function(){
         defaultValue = `"${defaultValue}"`;
       } else if (param.type === 'boolean') {
         defaultValue = defaultValue === 'true' || defaultValue === true ? 'true' : 'false';
+      } else if (param.type === 'clone_config' && typeof defaultValue === 'object') {
+        // Serialize clone config objects properly
+        defaultValue = JSON.stringify(defaultValue);
       }
       
       return defaultValue;
@@ -529,7 +530,7 @@ MD.Editor = function(){
     const hasAnyParams = hasInputParams || hasEquationParams;
     
     const inputParamComment = hasInputParams 
-      ? inputParams.map(name => ` * @param {${paramMap[name].type}} ${name} - Default: ${paramMap[name].defaultValue}`).join('\n')
+      ? inputParams.map((name, i) => ` * @param {${paramMap[name].type}} ${name} - Default: ${paramDefaults[i]}`).join('\n')
       : '';
     const equationParamComment = hasEquationParams
       ? equationParams.map(name => ` * @calculated {number} ${name} - Equation: ${paramMap[name].defaultValue}`).join('\n')
@@ -550,6 +551,7 @@ MD.Editor = function(){
       'color': 'String',
       'boolean': 'Boolean',
       'equation': 'Number',
+      'clone_config': 'Object',
       'grid_cols': 'Number',
       'grid_rows': 'Number',
       'grid_spacing_x': 'Number',
@@ -630,7 +632,7 @@ if (typeof module !== 'undefined' && module.exports) {
     }
   }
 
-  function createParametricClone(cols, rows, spacingX, spacingY) {
+  function createParametricClone(cloneName, cols, rows, spacingX, spacingY) {
     // Check if we have selected elements
     const selectedElements = svgCanvas.getSelectedElems();
     if (!selectedElements || selectedElements.length === 0 || !selectedElements[0]) {
@@ -638,27 +640,22 @@ if (typeof module !== 'undefined' && module.exports) {
       return;
     }
 
-    // Generate unique parameter names based on timestamp
-    const timestamp = Date.now();
-    const colsParamName = `clone_cols_${timestamp}`;
-    const rowsParamName = `clone_rows_${timestamp}`;
-    const spacingXParamName = `clone_spacing_x_${timestamp}`;
-    const spacingYParamName = `clone_spacing_y_${timestamp}`;
-
     try {
-      // Add the grid parameters to the parameter system
-      editor.parametersManager.addParameter(colsParamName, 'grid_cols', cols, 'Number of columns in the grid');
-      editor.parametersManager.addParameter(rowsParamName, 'grid_rows', rows, 'Number of rows in the grid');
-      editor.parametersManager.addParameter(spacingXParamName, 'grid_spacing_x', spacingX, 'Horizontal spacing between elements');
-      editor.parametersManager.addParameter(spacingYParamName, 'grid_spacing_y', spacingY, 'Vertical spacing between elements');
+      // Create the clone configuration object
+      const cloneConfig = {
+        num_cols: cols,
+        num_rows: rows, 
+        spacing_x: spacingX,
+        spacing_y: spacingY
+      };
+
+      // Add the clone configuration parameter to the parameter system
+      editor.parametersManager.addParameter(cloneName, 'clone_config', cloneConfig, `Configuration for ${cloneName} clone group`);
 
       // Create the parametric clone group using SVG canvas
       const cloneGroupId = svgCanvas.createParametricCloneGroup(
         selectedElements,
-        colsParamName,
-        rowsParamName,
-        spacingXParamName,
-        spacingYParamName
+        cloneName
       );
 
       if (cloneGroupId) {
@@ -670,7 +667,7 @@ if (typeof module !== 'undefined' && module.exports) {
         }
         
         saveCanvas();
-        alert(`Parametric clone created with ${cols}×${rows} grid pattern.`);
+        alert(`Parametric clone "${cloneName}" created with ${cols}×${rows} grid pattern.`);
       }
          } catch (error) {
        alert('Error creating parametric clone: ' + error.message);
@@ -683,27 +680,28 @@ if (typeof module !== 'undefined' && module.exports) {
        return;
      }
 
-     // Get parameter names from the clone group
-     const colsParam = cloneGroup.getAttribute('data-cols-param');
-     const rowsParam = cloneGroup.getAttribute('data-rows-param');
-     const spacingXParam = cloneGroup.getAttribute('data-spacing-x-param');
-     const spacingYParam = cloneGroup.getAttribute('data-spacing-y-param');
+     // Get parameter name from the clone group
+     const cloneParam = cloneGroup.getAttribute('data-clone-param');
 
-     if (!colsParam || !rowsParam || !spacingXParam || !spacingYParam) {
+     if (!cloneParam) {
        alert('Parametric clone data is corrupted.');
        return;
      }
 
-     // Get current parameter values
-     const colsParamObj = editor.parametersManager.getParameterByName(colsParam);
-     const rowsParamObj = editor.parametersManager.getParameterByName(rowsParam);
-     const spacingXParamObj = editor.parametersManager.getParameterByName(spacingXParam);
-     const spacingYParamObj = editor.parametersManager.getParameterByName(spacingYParam);
+     // Get current parameter value
+     const cloneParamObj = editor.parametersManager.getParameterByName(cloneParam);
 
-     if (!colsParamObj || !rowsParamObj || !spacingXParamObj || !spacingYParamObj) {
-       alert('Could not find associated parameters for this parametric clone.');
+     if (!cloneParamObj || cloneParamObj.type !== 'clone_config') {
+       alert('Could not find associated clone configuration parameter for this parametric clone.');
        return;
      }
+
+     // Extract values from the configuration object
+     const config = cloneParamObj.defaultValue;
+     const cols = config.num_cols || 3;
+     const rows = config.num_rows || 2;
+     const spacingX = config.spacing_x || 50;
+     const spacingY = config.spacing_y || 50;
 
      // Set up the modal with current values
      const modal = editor.modal.parametricClone;
@@ -712,17 +710,15 @@ if (typeof module !== 'undefined' && module.exports) {
      // Pre-populate the form with current values
      setTimeout(() => {
        const modalEl = modal.el;
-       modalEl.querySelector('#clone-cols').value = colsParamObj.defaultValue;
-       modalEl.querySelector('#clone-rows').value = rowsParamObj.defaultValue;
-       modalEl.querySelector('#clone-spacing-x').value = spacingXParamObj.defaultValue;
-       modalEl.querySelector('#clone-spacing-y').value = spacingYParamObj.defaultValue;
+       modalEl.querySelector('#clone-name').value = cloneParam;
+       modalEl.querySelector('#clone-cols').value = cols;
+       modalEl.querySelector('#clone-rows').value = rows;
+       modalEl.querySelector('#clone-spacing-x').value = spacingX;
+       modalEl.querySelector('#clone-spacing-y').value = spacingY;
        
-       // Store the parameter names for updating
+       // Store the parameter name and clone group ID for updating
        modalEl.setAttribute('data-editing-clone', 'true');
-       modalEl.setAttribute('data-cols-param', colsParam);
-       modalEl.setAttribute('data-rows-param', rowsParam);
-       modalEl.setAttribute('data-spacing-x-param', spacingXParam);
-       modalEl.setAttribute('data-spacing-y-param', spacingYParam);
+       modalEl.setAttribute('data-clone-param', cloneParam);
        modalEl.setAttribute('data-clone-group-id', cloneGroup.id);
      }, 50);
    }

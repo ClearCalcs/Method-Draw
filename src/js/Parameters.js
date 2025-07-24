@@ -12,6 +12,7 @@ MD.Parameters = function(){
     color: { label: 'Color', defaultValue: '#000000' },
     boolean: { label: 'Boolean', defaultValue: false },
     equation: { label: 'Equation', defaultValue: '0' },
+    clone_config: { label: 'Clone Configuration', defaultValue: { num_cols: 3, num_rows: 2, spacing_x: 50, spacing_y: 50 } },
     grid_cols: { label: 'Grid Columns', defaultValue: 3 },
     grid_rows: { label: 'Grid Rows', defaultValue: 2 },
     grid_spacing_x: { label: 'Horizontal Spacing', defaultValue: 50 },
