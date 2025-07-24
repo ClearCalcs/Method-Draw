@@ -115,9 +115,9 @@ editor.modal = {
         <form id="parameter-form-element">
           <div style="margin-bottom: 15px;">
             <label for="param-name" style="display: block; margin-bottom: 5px; font-weight: bold;">Name:</label>
-            <input type="text" id="param-name" placeholder="e.g., width, height, color" 
+            <input type="text" id="param-name" placeholder="e.g., radius, color, opacity" 
                    style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
-            <small style="color: #666;">Must start with letter or underscore, followed by letters, numbers, or underscores</small>
+            <small style="color: #666;">Must start with letter or underscore, followed by letters, numbers, or underscores. Cannot use: width, height</small>
           </div>
           
           <div style="margin-bottom: 15px;">
@@ -633,7 +633,7 @@ editor.modal = {
         
         // Check if name is valid parameter name
         if (!editor.parametersManager.isValidParameterName(cloneName)) {
-          alert('Invalid parameter name. Use only letters, numbers, and underscores. Cannot start with a number.');
+          alert('Invalid parameter name. Use only letters, numbers, and underscores. Cannot start with a number. Cannot use reserved names: width, height.');
           return;
         }
         

@@ -5,6 +5,9 @@ MD.Parameters = function(){
   // followed by letters, numbers, or underscores
   const PARAM_NAME_REGEX = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
   
+  // Reserved parameter names that cannot be used (conflict with platform variables)
+  const RESERVED_NAMES = ['width', 'height'];
+  
   // Parameter types supported
   const PARAM_TYPES = {
     number: { label: 'Number', defaultValue: 0 },
@@ -32,6 +35,10 @@ MD.Parameters = function(){
   // Validate parameter name
   function isValidParameterName(name) {
     if (!name || typeof name !== 'string') return false;
+    
+    // Check if name is reserved
+    if (RESERVED_NAMES.includes(name.toLowerCase())) return false;
+    
     return PARAM_NAME_REGEX.test(name);
   }
 
@@ -51,7 +58,7 @@ MD.Parameters = function(){
   // Add new parameter
   function addParameter(name, type, defaultValue, description = '') {
     if (!isValidParameterName(name)) {
-      throw new Error('Invalid parameter name. Must start with letter or underscore, followed by letters, numbers, or underscores.');
+      throw new Error('Invalid parameter name. Must start with letter or underscore, followed by letters, numbers, or underscores. Cannot use reserved names: width, height.');
     }
     
     if (parameterExists(name)) {
@@ -79,7 +86,7 @@ MD.Parameters = function(){
   // Update existing parameter
   function updateParameter(id, name, type, defaultValue, description = '') {
     if (!isValidParameterName(name)) {
-      throw new Error('Invalid parameter name. Must start with letter or underscore, followed by letters, numbers, or underscores.');
+      throw new Error('Invalid parameter name. Must start with letter or underscore, followed by letters, numbers, or underscores. Cannot use reserved names: width, height.');
     }
     
     if (parameterExists(name, id)) {
