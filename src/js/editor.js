@@ -20,6 +20,15 @@ MD.Editor = function(){
       editor.panel.updateContextPanel();
       editor.paintBox.fill.prep();
       editor.paintBox.stroke.prep();
+      
+      // Clear all parameters when creating a new document
+      state.set("canvasParameters", {});
+      
+      // Clear parameter validation from inputs if available
+      if (editor.propertyValidation && editor.propertyValidation.clearAllInputValidation) {
+        editor.propertyValidation.clearAllInputValidation();
+      }
+      
       svgCanvas.runExtensions('onNewDocument');
     });
   }
@@ -468,6 +477,12 @@ MD.Editor = function(){
       attributesToRemove.forEach(attrName => {
         elem.removeAttribute(attrName);
       });
+    });
+    
+    // Remove metadata tags that contain parametric data
+    const metadataElements = svgDoc.querySelectorAll('metadata');
+    metadataElements.forEach(metadata => {
+      metadata.parentNode.removeChild(metadata);
     });
     
     // Get the modified SVG string
