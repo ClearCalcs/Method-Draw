@@ -8,6 +8,18 @@ MD.Menu = function(){
   $('#tool_topath').on("click", editor.convertToPath);
   $('#tool_group').on("click", editor.groupSelected);
   $('#tool_ungroup').on("click", editor.ungroupSelected);
+  $('#tool_parametric_clone').on("click", function() {
+    // Clear any flags when opening from menu
+    setTimeout(() => {
+      editor.modal.parametricClone.el.removeAttribute('data-opened-from-params');
+      // Clear the name field for new clones
+      const nameInput = editor.modal.parametricClone.el.querySelector('#clone-name');
+      if (nameInput) {
+        nameInput.value = '';
+      }
+    }, 50);
+    editor.modal.parametricClone.open();
+  });
   if (window.location.host === "editor.method.ac") {
     $('#modal_donate').show();
     $('#sponsors').show();

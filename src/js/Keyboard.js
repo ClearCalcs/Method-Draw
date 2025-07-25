@@ -85,7 +85,7 @@ MD.Keyboard = function(){
   document.addEventListener("keyup", function(e){
     if ($("#color_picker").is(":visible")) return e;
     const canvasMode = state.get("canvasMode");
-    const key = e.key.toLowerCase();
+    const key = e.key ? e.key.toLowerCase() : '';
     const keys = {
     "alt":     ()=> $("#workarea").removeClass("out"),
     " ": ()=> editor.pan.stopPan(),

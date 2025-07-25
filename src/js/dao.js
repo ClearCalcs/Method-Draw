@@ -146,6 +146,15 @@ const dao = [
     private: true,
     save: true,
   },
+  // parametric SVG parameters
+  {
+    name: "canvasParameters",
+    label: "Canvas Parameters",
+    type: "object",
+    default: {},
+    private: true,
+    save: true,
+  },
 
 ];
 

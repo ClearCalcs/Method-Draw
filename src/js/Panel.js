@@ -348,12 +348,32 @@ MD.Panel = function(){
          .disableContextMenuItems('#ungroup');
      } 
      
+     // Handle parametric clone menu items
+     const isParametricClone = elem && elem.getAttribute('data-parametric-clone') === 'true';
+     
+     if (isParametricClone) {
+       // Change menu text to "Edit Parametric Clone..." for parametric clones
+       $('#cmenu_canvas a[href="#parametric_clone"]').text('Edit Parametric Clone...');
+       menu_items.enableContextMenuItems('#parametric_clone');
+     } else if (elem && !multiselected) {
+       // Show "Define Parametric Clone..." for non-parametric elements
+       $('#cmenu_canvas a[href="#parametric_clone"]').text('Define Parametric Clone...');
+       menu_items.enableContextMenuItems('#parametric_clone');
+     } else {
+       // Disable for no selection or multiselection
+       $('#cmenu_canvas a[href="#parametric_clone"]').text('Define Parametric Clone...');
+       menu_items.disableContextMenuItems('#parametric_clone');
+     }
+
      if (!elem && !multiselected) {
        menu_items.disableContextMenuItems('#delete,#cut,#copy,#ungroup,#move_front,#move_up,#move_down,#move_back');
-       $('.menu_item', '#edit_menu').addClass('disabled');
+       $('.menu_item.action_selected', '#edit_menu').addClass('disabled');
      }
 
      $('.menu_item', '#object_menu').toggleClass('disabled', !elem && !multiselected);
+     
+     // Also ensure Object menu parametric clone item follows the same logic
+     $('#tool_parametric_clone').toggleClass('disabled', !elem || multiselected);
      
      // update history buttons
      setTimeout(function(){
@@ -370,6 +390,13 @@ MD.Panel = function(){
        
        // Enable regular menu options
        $("#cmenu_canvas").enableContextMenuItems('#delete,#cut,#copy,#move_front,#move_up,#move_down,#move_back');
+     }
+     
+     // Restore parameter references for the selected element, or clear validation if none selected
+     if (editor.propertyValidation) {
+       setTimeout(() => {
+         editor.propertyValidation.restoreParameterReferences();
+       }, 10);
      }
     }
 

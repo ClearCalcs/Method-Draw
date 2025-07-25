@@ -18,7 +18,9 @@ editor.import = new MD.Import();
 editor.contextMenu = new MD.ContextMenu();
 editor.darkmode = new MD.Darkmode();
 editor.title = new MD.Title();
-
+editor.parametersManager = new MD.Parameters();
+editor.propertyValidation = new MD.PropertyValidation();
+  
 // bind the selected event to our function that handles updates to the UI
 svgCanvas.bind("selected", editor.selectedChanged);
 svgCanvas.bind("transition", editor.elementTransition);
@@ -62,3 +64,8 @@ state.set("canvasTitle", svgCanvas.getDocumentTitle());
 
 document.body.classList.remove("loading");
 document.getElementById("svgcanvas").removeAttribute("title");
+
+// Initialize property validation for parameter references
+setTimeout(() => {
+  editor.propertyValidation.initializeValidation();
+}, 100);

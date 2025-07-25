@@ -23,6 +23,12 @@ MD.Modal = function(config){
   }
 
   function close(){
+    // Blur any focused elements within the modal to restore keyboard shortcuts
+    const focusedElement = el.querySelector(':focus');
+    if (focusedElement) {
+      focusedElement.blur();
+    }
+    
     el.classList.add("hidden");
   }
 

@@ -20,6 +20,15 @@ MD.Editor = function(){
       editor.panel.updateContextPanel();
       editor.paintBox.fill.prep();
       editor.paintBox.stroke.prep();
+      
+      // Clear all parameters when creating a new document
+      state.set("canvasParameters", {});
+      
+      // Clear parameter validation from inputs if available
+      if (editor.propertyValidation && editor.propertyValidation.clearAllInputValidation) {
+        editor.propertyValidation.clearAllInputValidation();
+      }
+      
       svgCanvas.runExtensions('onNewDocument');
     });
   }
@@ -196,6 +205,18 @@ MD.Editor = function(){
       elems: elems
     });
 
+    // Reset any parametrized attributes back to their parameter values after element changes
+    if (editor.propertyValidation && elems && elems.length > 0) {
+      // Use setTimeout to ensure DOM updates are complete
+      setTimeout(() => {
+        const elementsWithParams = elems.filter(elem => 
+          elem && editor.propertyValidation.hasParameterReferences(elem)
+        );
+        if (elementsWithParams.length > 0) {
+          editor.propertyValidation.resetParameterizedAttributes(elementsWithParams);
+        }
+      }, 50);
+    }
 
     if (!svgCanvas.getContext()) {
         saveCanvas();
@@ -203,6 +224,7 @@ MD.Editor = function(){
   }
 
   function changeAttribute(attr, value, completed) {
+    // Parameter resolution handled by PropertyValidation
     if (attr === "opacity") value *= 0.01;
     if (completed) {
       svgCanvas.changeSelectedAttribute(attr, value);
@@ -300,6 +322,304 @@ MD.Editor = function(){
     }});
   };
 
+  function exportJS() {
+    try {
+      console.log('Starting JavaScript export...');
+      
+      // Get the SVG content
+      const svgString = svgCanvas.getSvgString();
+      console.log('Got SVG string:', svgString.length, 'characters');
+      
+      // Create the JavaScript function
+      const jsFunction = generateParametricJS(svgString);
+      console.log('Generated JS function:', jsFunction.length, 'characters');
+      
+      // Create and download the JS file
+      const title = state.get("canvasTitle") || "parametric-svg";
+      const filename = title.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+      const blob = new Blob([jsFunction], { type: "application/javascript;charset=utf-8" });
+      
+      console.log('Downloading file:', `${filename}.js`);
+      
+      // Use the saveAs function from filesaver.js
+      if (typeof saveAs !== 'undefined') {
+        saveAs(blob, `${filename}.js`);
+      } else {
+        // Fallback download method
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `${filename}.js`;
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => {
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        }, 0);
+      }
+      
+      console.log('JavaScript export completed successfully');
+    } catch (error) {
+      console.error('Error during JavaScript export:', error);
+      alert('Error exporting JavaScript file: ' + error.message);
+    }
+  }
+
+  function generateParametricJS(svgString) {
+    // Parse the SVG to find parametric elements
+    const parser = new DOMParser();
+    const svgDoc = parser.parseFromString(svgString, 'image/svg+xml');
+    
+    // Collect all parameters and their default values
+    const parametersObj = editor.parametersManager.getParameters() || {};
+    console.log('Parameters object:', parametersObj);
+    const paramMap = {};
+    
+    // Convert parameters object to map by parameter name
+    Object.values(parametersObj).forEach(param => {
+      if (param && param.name) {
+        paramMap[param.name] = param;
+      }
+    });
+    console.log('Parameter map:', paramMap);
+    
+    // Find all elements with data-param-* attributes and replace their values
+    const parameterizedElements = svgDoc.querySelectorAll('[class*="data-param-"], [data-param-width], [data-param-height], [data-param-x], [data-param-y], [data-param-cx], [data-param-cy], [data-param-rx], [data-param-ry], [data-param-r]');
+    
+    // Actually, let's find ALL elements and check their attributes
+    const allElements = svgDoc.querySelectorAll('*');
+    allElements.forEach(elem => {
+      for (let i = 0; i < elem.attributes.length; i++) {
+        const attr = elem.attributes[i];
+        if (attr.name.startsWith('data-param-')) {
+          const attrName = attr.name.substring('data-param-'.length);
+          const paramRef = attr.value;
+          const paramName = paramRef.substring(1); // Remove the @ symbol
+          
+          if (paramMap[paramName]) {
+            // Replace the actual attribute value with template literal
+            elem.setAttribute(attrName, `\${${paramName}}`);
+          }
+        }
+      }
+    });
+    
+    // Handle parametric clone groups
+    const cloneGroups = svgDoc.querySelectorAll('[data-parametric-clone="true"]');
+    const cloneHelperFunctions = [];
+    
+    cloneGroups.forEach((cloneGroup, index) => {
+      const cloneParam = cloneGroup.getAttribute('data-clone-param');
+      
+      // Find template group
+      const templateGroup = cloneGroup.querySelector('[data-template="true"]');
+      if (templateGroup && cloneParam) {
+        // Get template elements as string
+        const templateElements = Array.from(templateGroup.children).map(child => {
+          return new XMLSerializer().serializeToString(child);
+        }).join('');
+        
+        // Generate helper function name
+        const funcName = `generateCloneGrid_${index}`;
+        
+        // Create helper function
+        const helperFunction = `
+  function ${funcName}() {
+    const config = ${cloneParam};
+    const cols = config.num_cols;
+    const rows = config.num_rows;
+    const spacingX = config.spacing_x;
+    const spacingY = config.spacing_y;
+    
+    let elements = '';
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        const offsetX = col * spacingX;
+        const offsetY = row * spacingY;
+        
+        if (offsetX === 0 && offsetY === 0) {
+          // Original position - just add template elements
+          elements += \`${templateElements.replace(/`/g, '\\`')}\`;
+        } else {
+          // Clone position - wrap in transform group
+          elements += \`<g transform="translate(\${offsetX},\${offsetY})">${templateElements.replace(/`/g, '\\`')}</g>\`;
+        }
+      }
+    }
+    return elements;
+  }`;
+        
+        cloneHelperFunctions.push(helperFunction);
+        
+        // Replace the clone group with a placeholder that calls the helper function
+        const placeholder = svgDoc.createElementNS('http://www.w3.org/2000/svg', 'g');
+        placeholder.setAttribute('id', cloneGroup.id);
+        placeholder.innerHTML = `\${${funcName}()}`;
+        cloneGroup.parentNode.replaceChild(placeholder, cloneGroup);
+      }
+    });
+
+    // Clean up data-param-* attributes and parametric clone attributes from the final output
+    allElements.forEach(elem => {
+      const attributesToRemove = [];
+      for (let i = 0; i < elem.attributes.length; i++) {
+        const attr = elem.attributes[i];
+        if (attr.name.startsWith('data-param-') || 
+            attr.name.startsWith('data-parametric-') ||
+            attr.name.startsWith('data-cols-') ||
+            attr.name.startsWith('data-rows-') ||
+            attr.name.startsWith('data-spacing-') ||
+            attr.name === 'data-template' ||
+            attr.name === 'data-clone-instance') {
+          attributesToRemove.push(attr.name);
+        }
+      }
+      attributesToRemove.forEach(attrName => {
+        elem.removeAttribute(attrName);
+      });
+    });
+    
+    // Remove metadata tags that contain parametric data
+    const metadataElements = svgDoc.querySelectorAll('metadata');
+    metadataElements.forEach(metadata => {
+      metadata.parentNode.removeChild(metadata);
+    });
+    
+    // Get the modified SVG string
+    const serializer = new XMLSerializer();
+    let modifiedSvgString = serializer.serializeToString(svgDoc.documentElement);
+    
+    // Separate input parameters from equation parameters
+    const inputParams = [];
+    const equationParams = [];
+    
+    Object.keys(paramMap).forEach(name => {
+      const param = paramMap[name];
+      if (param.type === 'equation') {
+        equationParams.push(name);
+      } else {
+        inputParams.push(name);
+      }
+    });
+    
+    // Generate parameter list and default values for input parameters only
+    const paramDefaults = inputParams.map(name => {
+      const param = paramMap[name];
+      let defaultValue = param.defaultValue;
+      
+      // Format default value based on type
+      if (param.type === 'text' || param.type === 'color') {
+        defaultValue = `"${defaultValue}"`;
+      } else if (param.type === 'boolean') {
+        defaultValue = defaultValue === 'true' || defaultValue === true ? 'true' : 'false';
+      } else if (param.type === 'clone_config' && typeof defaultValue === 'object') {
+        // Serialize clone config objects properly
+        defaultValue = JSON.stringify(defaultValue);
+      }
+      
+      return defaultValue;
+    });
+    
+    // Escape the SVG string for template literal
+    const escapedSvg = modifiedSvgString
+      .replace(/\\/g, '\\\\')    // Escape backslashes first
+      .replace(/`/g, '\\`')      // Escape backticks
+      .replace(/\$(?!{)/g, '\\$'); // Escape $ that aren't part of ${...}
+      
+    // Generate equation calculation code
+    const equationCalculations = equationParams.map(name => {
+      const param = paramMap[name];
+      const equation = param.defaultValue;
+      
+      // Replace parameter references in equation with variable names
+      let processedEquation = equation;
+      const paramReferenceRegex = /@([a-zA-Z_][a-zA-Z0-9_]*)/g;
+      processedEquation = processedEquation.replace(paramReferenceRegex, '$1');
+      
+      return `  const ${name} = (${processedEquation});`;
+    }).join('\n');
+
+    // Generate the function
+    const hasInputParams = inputParams.length > 0;
+    const hasEquationParams = equationParams.length > 0;
+    const hasAnyParams = hasInputParams || hasEquationParams;
+    
+    const inputParamComment = hasInputParams 
+      ? inputParams.map((name, i) => ` * @param {${paramMap[name].type}} ${name} - Default: ${paramDefaults[i]}`).join('\n')
+      : '';
+    const equationParamComment = hasEquationParams
+      ? equationParams.map(name => ` * @calculated {number} ${name} - Equation: ${paramMap[name].defaultValue}`).join('\n')
+      : '';
+    const paramComment = hasAnyParams 
+      ? [inputParamComment, equationParamComment].filter(c => c).join('\n')
+      : ' * No parameters defined';
+      
+    const functionParams = 'params = {}';
+    const parameterAssignments = hasInputParams 
+      ? inputParams.map((name, i) => `  const ${name} = params.${name} ?? ${paramDefaults[i]};`).join('\n')
+      : '';
+    
+    // Generate parameter types array for export
+    const typeMapping = {
+      'number': 'Number',
+      'text': 'String',
+      'color': 'String',
+      'boolean': 'Boolean',
+      'equation': 'Number',
+      'clone_config': 'Object',
+      'grid_cols': 'Number',
+      'grid_rows': 'Number',
+      'grid_spacing_x': 'Number',
+      'grid_spacing_y': 'Number'
+    };
+    
+    const paramsTypesArray = hasInputParams 
+      ? inputParams.map(name => {
+          const param = paramMap[name];
+          const jsType = typeMapping[param.type] || 'String';
+          return `  { key: "${name}", type: "${jsType}" }`;
+        }).join(',\n')
+      : '';
+    
+    const paramsTypesExport = hasInputParams 
+      ? `function params() {
+  return [\n${paramsTypesArray}\n];
+}`
+      : `function params() {
+  return [];
+}`;
+    
+    const functionBody = `/**
+ * Parametric SVG Generator
+ * Generated by Method Draw
+ * 
+ * Parameters:
+${paramComment}
+ */
+function render(${functionParams}) {
+${parameterAssignments}
+${equationCalculations ? '\n' + equationCalculations : ''}
+${cloneHelperFunctions.join('')}
+  
+  return \`${escapedSvg}\`;
+}
+
+${paramsTypesExport}
+
+// Export for different module systems
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = render, params;
+} else if (typeof define === 'function' && define.amd) {
+  define([], function() { return render, params; });
+} else if (typeof window !== 'undefined') {
+  window.render = render;
+  window.params = params;
+}
+`;
+
+    return functionBody;
+  }
+
   function saveCanvas(){
     state.set("canvasContent", svgCanvas.getSvgString());
   }
@@ -327,6 +647,97 @@ MD.Editor = function(){
     }
   }
 
+  function createParametricClone(cloneName, cols, rows, spacingX, spacingY) {
+    // Check if we have selected elements
+    const selectedElements = svgCanvas.getSelectedElems();
+    if (!selectedElements || selectedElements.length === 0 || !selectedElements[0]) {
+      alert('Please select one or more elements to create a parametric clone.');
+      return;
+    }
+
+    try {
+      // Create the clone configuration object
+      const cloneConfig = {
+        num_cols: cols,
+        num_rows: rows, 
+        spacing_x: spacingX,
+        spacing_y: spacingY
+      };
+
+      // Add the clone configuration parameter to the parameter system
+      editor.parametersManager.addParameter(cloneName, 'clone_config', cloneConfig, `Configuration for ${cloneName} clone group`);
+
+      // Create the parametric clone group using SVG canvas
+      const cloneGroupId = svgCanvas.createParametricCloneGroup(
+        selectedElements,
+        cloneName
+      );
+
+      if (cloneGroupId) {
+        // Select the new group
+        const cloneGroup = svgedit.utilities.getElem(cloneGroupId);
+        if (cloneGroup) {
+          svgCanvas.clearSelection();
+          svgCanvas.addToSelection([cloneGroup]);
+        }
+        
+        saveCanvas();
+        alert(`Parametric clone "${cloneName}" created with ${cols}×${rows} grid pattern.`);
+      }
+         } catch (error) {
+       alert('Error creating parametric clone: ' + error.message);
+     }
+   }
+
+   function editParametricClone(cloneGroup) {
+     if (!cloneGroup || cloneGroup.getAttribute('data-parametric-clone') !== 'true') {
+       alert('Selected element is not a parametric clone.');
+       return;
+     }
+
+     // Get parameter name from the clone group
+     const cloneParam = cloneGroup.getAttribute('data-clone-param');
+
+     if (!cloneParam) {
+       alert('Parametric clone data is corrupted.');
+       return;
+     }
+
+     // Get current parameter value
+     const cloneParamObj = editor.parametersManager.getParameterByName(cloneParam);
+
+     if (!cloneParamObj || cloneParamObj.type !== 'clone_config') {
+       alert('Could not find associated clone configuration parameter for this parametric clone.');
+       return;
+     }
+
+     // Extract values from the configuration object
+     const config = cloneParamObj.defaultValue;
+     const cols = config.num_cols || 3;
+     const rows = config.num_rows || 2;
+     const spacingX = config.spacing_x || 50;
+     const spacingY = config.spacing_y || 50;
+
+     // Set up the modal with current values
+     const modal = editor.modal.parametricClone;
+     modal.open();
+     
+     // Pre-populate the form with current values
+     setTimeout(() => {
+       const modalEl = modal.el;
+       modalEl.querySelector('#clone-name').value = cloneParam;
+       modalEl.querySelector('#clone-cols').value = cols;
+       modalEl.querySelector('#clone-rows').value = rows;
+       modalEl.querySelector('#clone-spacing-x').value = spacingX;
+       modalEl.querySelector('#clone-spacing-y').value = spacingY;
+       
+       // Store the parameter name and clone group ID for updating
+       modalEl.setAttribute('data-editing-clone', 'true');
+       modalEl.setAttribute('data-clone-param', cloneParam);
+       modalEl.setAttribute('data-clone-group-id', cloneGroup.id);
+     }, 50);
+   }
+
   function about(){
     editor.modal.about.open();
   }
@@ -348,6 +759,20 @@ MD.Editor = function(){
     const textarea = editor.modal.source.el.querySelector("textarea");
     textarea.value = svgCanvas.getSvgString();
     editor.modal.source.open();
+  }
+
+  function parameters(){
+    if (!editor.modal || !editor.modal.parameters) {
+      console.error('editor.modal.parameters is not available');
+      return;
+    }
+    
+    editor.modal.parameters.open();
+    
+    // Ensure the parameters list is rendered when modal opens
+    if (editor.modal.parameters.renderParametersList) {
+      editor.modal.parameters.renderParametersList();
+    }
   }
 
   function loadFromUrl(url, cb){
@@ -375,6 +800,8 @@ MD.Editor = function(){
   this.changeAttribute = changeAttribute;
   this.contextChanged = contextChanged;
   this.elementTransition = elementTransition;
+  this.createParametricClone = createParametricClone;
+  this.editParametricClone = editParametricClone;
   this.switchPaint = switchPaint;
   this.focusPaint = focusPaint;
   this.save = save;
@@ -406,6 +833,8 @@ MD.Editor = function(){
   this.shortcuts = shortcuts;
   this.donate = donate;
   this.source = source;
+  this.parameters = parameters;
+  this.exportJS = exportJS;
   this.saveCanvas = saveCanvas;
   this.loadFromUrl = loadFromUrl;
 

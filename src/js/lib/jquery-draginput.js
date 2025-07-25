@@ -46,6 +46,13 @@ $.fn.dragInput = function(cfg){
     this.adjustValue = function(i, completed = false){
       var v;
       i = parseFloat(i);
+      
+      // Check for parameter references - PropertyValidation handles this more reliably
+      if (typeof this.value === 'string' && this.value.trim().startsWith('@')) {
+        // Let PropertyValidation handle parameter resolution
+        return;
+      }
+      
       if(isNaN(this.value)) {
         v = this.dragCfg.reset;
       } else if($.isFunction(this.dragCfg.stepfunc)) {
@@ -137,6 +144,8 @@ $.fn.dragInput = function(cfg){
       }
       
     })
+    
+
     
     .bind("dblclick taphold", function(e) {
       this.removeAttribute("readonly", "readonly");

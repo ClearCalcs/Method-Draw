@@ -34,6 +34,7 @@ nsMap_[xlinkns] = 'xlink';
 nsMap_[xmlns] = 'xml';
 nsMap_[xmlnsns] = 'xmlns';
 nsMap_[se_ns] = 'se';
+nsMap_["http://methoddraw.com/parametric/1.0"] = 'md';
 nsMap_[htmlns] = 'xhtml';
 nsMap_[mathns] = 'mathml';
 
